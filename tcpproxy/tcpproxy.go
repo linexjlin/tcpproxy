@@ -4,9 +4,11 @@ import (
 	"io"
 	"log"
 	"net"
+	"strings"
 	"time"
 
 	"github.com/linexjlin/tcpproxy/peekhost"
+	"github.com/linexjlin/tcpproxy/sendTraf"
 )
 
 type Config struct {
@@ -19,7 +21,8 @@ type Config struct {
 }
 
 type Proxy struct {
-	cfg *Config
+	cfg                *Config
+	SendTraf, SendByes bool
 }
 
 func (p *Proxy) UpdateConfig(new *Config) {
@@ -57,7 +60,6 @@ func (p *Proxy) getRemotes(rType, host string) []string {
 func NewProxy() *Proxy {
 	return &Proxy{}
 }
-
 func (p *Proxy) forwardHTTP(conn net.Conn, host string, dat []byte) {
 	remotes := p.getRemotes("HTTP", host)
 	var client net.Conn
@@ -83,7 +85,16 @@ func (p *Proxy) forwardHTTP(conn net.Conn, host string, dat []byte) {
 	log.Println(conn.RemoteAddr(), "->", host, "->", client.RemoteAddr())
 	go func() {
 		client.Write(dat)
-		io.Copy(client, conn)
+		bytes, _ := io.Copy(client, conn)
+		if p.SendTraf {
+			user := host
+			userIP := strings.Split(conn.RemoteAddr().String(), ":")[0]
+			if p.SendByes {
+				sendTraf.SendTraf(user, userIP, p.cfg.AddByteUrl, uint64(bytes))
+			} else {
+				sendTraf.SendTraf(user, userIP, p.cfg.AddByteUrl, 0)
+			}
+		}
 		sync <- 1
 	}()
 

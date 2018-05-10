@@ -35,7 +35,12 @@ func autoUpdateConfig(url string, done chan int) {
 func main() {
 	conf := flag.String("f", "./proxy.conf", "/etc/proxy.conf")
 	url := flag.String("u", "", "https://conf.site.com/conf.json")
+	sendTraf := flag.Bool("t", false, "true")
+	sendBytes := flag.Bool("b", false, "true")
 	flag.Parse()
+	P.SendTraf = (*sendTraf)
+	P.SendByes = (*sendBytes)
+	log.Println(P.SendTraf, P.SendByes)
 	if (*url) != "" {
 		var done = make(chan int, 10)
 		go autoUpdateConfig((*url), done)
