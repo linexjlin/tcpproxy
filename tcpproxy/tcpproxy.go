@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	humanize "github.com/dustin/go-humanize"
 	"github.com/linexjlin/tcpproxy/peekhost"
 	"github.com/linexjlin/tcpproxy/sendTraf"
 )
@@ -20,9 +21,22 @@ type Config struct {
 	AddByteUrl          string
 }
 
+type Taf struct {
+	in  uint64
+	out uint64
+	ip  string
+}
+
 type Proxy struct {
 	cfg                *Config
 	SendTraf, SendByes bool
+	ut                 map[string]*Taf
+}
+
+func NewProxy() *Proxy {
+	p := Proxy{}
+	p.ut = make(map[string]*Taf)
+	return &p
 }
 
 func (p *Proxy) UpdateConfig(new *Config) {
@@ -57,9 +71,6 @@ func (p *Proxy) getRemotes(rType, host string) []string {
 	return config.DefaultTCPBackends
 }
 
-func NewProxy() *Proxy {
-	return &Proxy{}
-}
 func (p *Proxy) forwardHTTP(conn net.Conn, host string, dat []byte) {
 	remotes := p.getRemotes("HTTP", host)
 	var client net.Conn
@@ -81,25 +92,25 @@ func (p *Proxy) forwardHTTP(conn net.Conn, host string, dat []byte) {
 		}
 	}
 
-	var sync = make(chan int, 2)
 	log.Println(conn.RemoteAddr(), "->", host, "->", client.RemoteAddr())
+	user := host
+	userIP := strings.Split(conn.RemoteAddr().String(), ":")[0]
+	if _, ok := p.ut[user]; !ok {
+		p.ut[user] = &Taf{}
+		p.ut[user].ip = userIP
+	}
+
+	var sync = make(chan int, 2)
 	go func() {
 		client.Write(dat)
 		bytes, _ := io.Copy(client, conn)
-		if p.SendTraf {
-			user := host
-			userIP := strings.Split(conn.RemoteAddr().String(), ":")[0]
-			if p.SendByes {
-				sendTraf.SendTraf(user, userIP, p.cfg.AddByteUrl, uint64(bytes))
-			} else {
-				sendTraf.SendTraf(user, userIP, p.cfg.AddByteUrl, 0)
-			}
-		}
+		p.ut[user].out += uint64(bytes)
 		sync <- 1
 	}()
 
 	go func() {
-		io.Copy(conn, client)
+		bytes, _ := io.Copy(conn, client)
+		p.ut[user].in += uint64(bytes)
 		sync <- 1
 	}()
 
@@ -154,6 +165,9 @@ func (p *Proxy) forwardTCP(conn net.Conn, dat []byte) {
 }
 
 func (p *Proxy) Start() {
+	if p.SendTraf {
+		go p.AutoSentTraf(time.Minute * 2)
+	}
 	p.listenAndProxyAll()
 }
 
@@ -188,5 +202,28 @@ func (p *Proxy) listenAndProxy(listenAddr string) {
 			}
 		}
 
+	}
+}
+
+func (p *Proxy) AutoSentTraf(interval time.Duration) {
+	var from = time.Now()
+	for {
+		time.Sleep(interval)
+		for u, t := range p.ut {
+			if t.out == 0 {
+				continue
+			} else {
+				if p.SendByes {
+					sendTraf.SendTraf(u, t.ip, p.cfg.AddByteUrl, uint64(t.in), uint64(t.out))
+				} else {
+					sendTraf.SendTraf(u, t.ip, p.cfg.AddByteUrl, 0, 0)
+				}
+				log.Println(u, t.ip, humanize.Bytes(uint64(float64(t.out)/time.Now().Sub(from).Seconds())), "/s ↓",
+					humanize.Bytes(uint64(float64(t.in)/time.Now().Sub(from).Seconds())), "/s ↑")
+				t.out = 0
+				t.in = 0
+			}
+		}
+		from = time.Now()
 	}
 }
