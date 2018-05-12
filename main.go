@@ -8,6 +8,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/linexjlin/tcpproxy/tcplatency"
 	"github.com/linexjlin/tcpproxy/tcpproxy"
 )
 
@@ -15,6 +16,7 @@ var P = tcpproxy.NewProxy()
 
 func autoUpdateConfig(url string, done chan int) {
 	var config tcpproxy.Config
+	var loadCnt = 0
 	for {
 		if rsp, err := http.Get(url); err != nil {
 			log.Println(err)
@@ -24,12 +26,22 @@ func autoUpdateConfig(url string, done chan int) {
 			} else {
 				log.Println("config", config)
 				rsp.Body.Close()
+				if loadCnt > 0 {
+					optimizeBackend(&config)
+				}
+				loadCnt++
 				P.UpdateConfig(&config)
 				done <- 1
 			}
 		}
 		time.Sleep(time.Minute * 10)
 	}
+}
+
+func optimizeBackend(c *tcpproxy.Config) {
+	tcplatency.OrderHostByBackup(c.DefaultHTTPBackends)
+	tcplatency.OrderHostByBackup(c.DefaultTCPBackends)
+	tcplatency.OrderHostByBackup(c.FailHTTPBackends)
 }
 
 func main() {

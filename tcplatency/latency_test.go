@@ -16,3 +16,15 @@ func TestDialLatency(t *testing.T) {
 func TestLatency(t *testing.T) {
 	t.Log(Latency("www.baidu.com:80"))
 }
+
+func TestOrderHostByBackup(t *testing.T) {
+	origin := []string{"www.usa.com:80", "www.baidu.com:80"}
+	ordered := []string{"www.usa.com:80", "www.baidu.com:80"}
+	OrderHostByBackup(ordered)
+	if origin[0] == ordered[0] {
+		t.Log(ordered)
+		t.Fail()
+	} else {
+		t.Log(ordered)
+	}
+}

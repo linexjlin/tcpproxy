@@ -12,6 +12,34 @@ const (
 	testInterval = time.Millisecond * 600
 )
 
+func OrderHostByBackup(hosts []string) {
+	if len(hosts) < 2 {
+		return
+	} else {
+		firstLatency := Latency(hosts[0])
+		log.Println("Latency of", hosts[0], firstLatency)
+		for i, host := range hosts {
+			if i == 0 {
+				continue
+			} else {
+				l := Latency(host)
+				log.Println("Latency of", host, l)
+				if time.Duration(firstLatency.Nanoseconds()-l.Nanoseconds()) > time.Millisecond*120 {
+					log.Println("switch", hosts[0], host)
+					firstLatency = l
+					th := hosts[0]
+					hosts[0] = host
+					hosts[i] = th
+				}
+			}
+		}
+	}
+}
+
+func OrderByLatency(hosts []string) {
+
+}
+
 func Latency(addr string) (latency time.Duration) {
 	var begin = time.Now()
 	var pass = begin
