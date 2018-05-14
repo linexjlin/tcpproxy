@@ -23,7 +23,6 @@ func SendTraf(user, userIP, url string, in, out uint64) {
 		client := http.Client{}
 		if rsp, err := client.Do(req); err != nil {
 			log.Println(err)
-			rsp.Body.Close()
 		} else {
 			rsp.Body.Close()
 		}
