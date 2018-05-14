@@ -28,9 +28,9 @@ type Taf struct {
 }
 
 type Proxy struct {
-	cfg                *Config
-	SendTraf, SendByes bool
-	ut                 map[string]*Taf
+	cfg                        *Config
+	SendTraf, SendByes, SendIP bool
+	ut                         map[string]*Taf
 }
 
 func NewProxy() *Proxy {
@@ -211,6 +211,9 @@ func (p *Proxy) AutoSentTraf(interval time.Duration) {
 			if t.out == 0 {
 				continue
 			} else {
+				if !p.SendIP {
+					t.ip = ""
+				}
 				if p.SendByes {
 					sendTraf.SendTraf(u, t.ip, p.cfg.AddByteUrl, uint64(t.in), uint64(t.out))
 				} else {
