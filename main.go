@@ -47,11 +47,13 @@ func optimizeBackend(c *tcpproxy.Config) {
 func main() {
 	conf := flag.String("f", "./proxy.conf", "/etc/proxy.conf")
 	url := flag.String("u", "", "https://conf.site.com/conf.json")
-	sendTraf := flag.Bool("t", false, "true")
-	sendBytes := flag.Bool("b", false, "true")
+	sendTraf := flag.Bool("t", false, "weather send host's traffic to remote")
+	sendBytes := flag.Bool("b", false, "weather send bytes of host traffic")
+	sendIP := flag.Bool("i", false, "weahter send IP of host")
 	flag.Parse()
 	P.SendTraf = (*sendTraf)
 	P.SendByes = (*sendBytes)
+	P.SendIP = (*sendIP)
 	log.Println(P.SendTraf, P.SendByes)
 	if (*url) != "" {
 		var done = make(chan int, 10)
