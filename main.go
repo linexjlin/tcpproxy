@@ -26,12 +26,13 @@ func autoUpdateConfig(url string, done chan int) {
 			} else {
 				log.Println("config", config)
 				rsp.Body.Close()
-				if loadCnt > 0 {
+				if loadCnt == 0 {
+					done <- 1
+				} else {
 					optimizeBackend(&config)
 				}
 				loadCnt++
 				P.UpdateConfig(&config)
-				done <- 1
 			}
 		}
 		time.Sleep(time.Minute * 10)
@@ -59,7 +60,6 @@ func main() {
 		var done = make(chan int, 10)
 		go autoUpdateConfig((*url), done)
 		<-done
-		go func() { <-done }()
 		goto STARTPROXY
 	}
 
