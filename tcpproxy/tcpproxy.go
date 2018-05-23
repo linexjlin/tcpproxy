@@ -92,6 +92,7 @@ func (p *Proxy) forwardHTTP(conn net.Conn, host string, dat []byte) {
 	defer conn.Close()
 	remotes := p.getRemotes("HTTP", host)
 	if len(remotes) == 0 {
+		log.Println("Unable to get remote for:", host)
 		return
 	}
 	var client net.Conn
@@ -186,6 +187,7 @@ func (p *Proxy) forward(conn net.Conn, remotes []string, dat []byte) {
 func (p *Proxy) forwardTCP(conn net.Conn, dat []byte) {
 	remotes := p.getRemotes("TCP", "")
 	if len(remotes) == 0 {
+		log.Println("Unable to find remote hosts")
 		conn.Close()
 	} else {
 		p.forward(conn, remotes, dat)
@@ -195,6 +197,7 @@ func (p *Proxy) forwardTCP(conn net.Conn, dat []byte) {
 func (p *Proxy) forwardSSH(conn net.Conn, dat []byte) {
 	remotes := p.getRemotes("SSH", "")
 	if len(remotes) == 0 {
+		log.Println("Unable to find remote hosts")
 		conn.Close()
 	} else {
 		p.forward(conn, remotes, dat)
