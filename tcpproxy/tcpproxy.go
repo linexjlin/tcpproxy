@@ -36,6 +36,19 @@ type Proxy struct {
 	ut                         map[string]*Taf
 }
 
+func iocopy(w io.Writer, r io.Reader) (int64, error) {
+	buf := make([]byte, 16*1024)
+	var s int64
+	for {
+		if n, err := r.Read(buf); err != nil {
+			return s, err
+		} else {
+			w.Write(buf[0:n])
+			s += int64(n)
+		}
+	}
+}
+
 func NewProxy() *Proxy {
 	p := Proxy{}
 	p.ut = make(map[string]*Taf)
@@ -45,8 +58,10 @@ func NewProxy() *Proxy {
 func (p *Proxy) UpdateConfig(new *Config) {
 	new.regRoute = make(map[*regexp.Regexp][]string)
 	for rs, v := range new.Route {
-		r := regexp.MustCompile(rs)
-		new.regRoute[r] = v
+		if len(v) > 0 {
+			r := regexp.MustCompile(rs)
+			new.regRoute[r] = v
+		}
 	}
 	p.cfg = new
 }
@@ -125,13 +140,13 @@ func (p *Proxy) forwardHTTP(conn net.Conn, host string, dat []byte) {
 	var sync = make(chan int, 2)
 	go func() {
 		client.Write(dat)
-		bytes, _ := io.Copy(client, conn)
+		bytes, _ := iocopy(client, conn)
 		p.ut[user].in += uint64(bytes)
 		sync <- 1
 	}()
 
 	go func() {
-		bytes, _ := io.Copy(conn, client)
+		bytes, _ := iocopy(conn, client)
 		p.ut[user].out += uint64(bytes)
 		sync <- 1
 	}()
@@ -166,7 +181,7 @@ func (p *Proxy) forward(conn net.Conn, remotes []string, dat []byte) {
 
 	go func() {
 		client.Write(dat)
-		_, err := io.Copy(client, conn)
+		_, err := iocopy(client, conn)
 		if err != nil {
 			log.Println(err)
 		}
@@ -174,7 +189,7 @@ func (p *Proxy) forward(conn net.Conn, remotes []string, dat []byte) {
 	}()
 
 	go func() {
-		_, err := io.Copy(conn, client)
+		_, err := iocopy(conn, client)
 		if err != nil {
 			log.Println(err)
 		}
@@ -205,10 +220,10 @@ func (p *Proxy) forwardSSH(conn net.Conn, dat []byte) {
 }
 
 func (p *Proxy) Start() {
+	p.listenAndProxyAll()
 	if p.SendTraf {
 		go p.AutoSentTraf(time.Minute * 2)
 	}
-	p.listenAndProxyAll()
 }
 
 func (p *Proxy) listenAndProxyAll() {

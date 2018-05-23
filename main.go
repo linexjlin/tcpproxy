@@ -26,13 +26,13 @@ func autoUpdateConfig(url string, done chan int) {
 			} else {
 				log.Println("config", config)
 				rsp.Body.Close()
+				P.UpdateConfig(&config)
 				if loadCnt == 0 {
 					done <- 1
 				} else {
 					optimizeBackend(&config)
 				}
 				loadCnt++
-				P.UpdateConfig(&config)
 			}
 		}
 		time.Sleep(time.Minute * 10)
@@ -52,6 +52,7 @@ func main() {
 	sendBytes := flag.Bool("b", false, "weather send bytes of host traffic")
 	sendIP := flag.Bool("i", false, "weahter send IP of host")
 	flag.Parse()
+	log.SetFlags(log.Ltime | log.Lshortfile)
 	P.SendTraf = (*sendTraf)
 	P.SendByes = (*sendBytes)
 	P.SendIP = (*sendIP)
