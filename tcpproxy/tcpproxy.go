@@ -4,6 +4,7 @@ import (
 	"io"
 	"log"
 	"net"
+	"regexp"
 	"strings"
 	"time"
 
@@ -15,6 +16,7 @@ import (
 type Config struct {
 	Listen              []string
 	Route               map[string][]string
+	regRoute            map[*regexp.Regexp][]string
 	DefaultHTTPBackends []string
 	FailHTTPBackends    []string
 	DefaultTCPBackends  []string
@@ -41,6 +43,11 @@ func NewProxy() *Proxy {
 }
 
 func (p *Proxy) UpdateConfig(new *Config) {
+	new.regRoute = make(map[*regexp.Regexp][]string)
+	for rs, v := range new.Route {
+		r := regexp.MustCompile(rs)
+		new.regRoute[r] = v
+	}
 	p.cfg = new
 }
 
@@ -60,10 +67,16 @@ func (p *Proxy) getRemotes(rType, host string) []string {
 				log.Println("UserRoute")
 				return r
 			}
-		} else {
-			log.Println("FailHTTPBackends")
-			return config.FailHTTPBackends
 		}
+		for r, h := range config.regRoute {
+			if r.MatchString(host) {
+				log.Println("RegRoute")
+				return h
+			}
+		}
+
+		log.Println("FailHTTPBackends")
+		return config.FailHTTPBackends
 	case "TCP":
 		log.Println("DefaultTCPBackends")
 		return config.DefaultTCPBackends
