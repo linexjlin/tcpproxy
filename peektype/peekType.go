@@ -43,8 +43,12 @@ func peek(r io.Reader) (buf []byte, cType int, res interface{}, err error) {
 			return buf, UNKNOWN, "", err
 		}
 		buf = append(buf, l2...)
-		host := strings.TrimSpace(strings.Split(string(l2), ":")[1])
-		return buf, HTTP, host, nil
+		if len(strings.Split(string(l2), ":")) > 1 {
+			host := strings.TrimSpace(strings.Split(string(l2), ":")[1])
+			return buf, HTTP, host, nil
+		} else {
+			return buf, NORMALTCP, "", nil
+		}
 	default:
 		return buf, NORMALTCP, "", nil
 	}
