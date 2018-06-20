@@ -37,6 +37,7 @@ type Proxy struct {
 }
 
 func iocopy(w io.Writer, r io.Reader) (int64, error) {
+	return io.Copy(w, r)
 	buf := make([]byte, 16*1024)
 	var s int64
 	for {

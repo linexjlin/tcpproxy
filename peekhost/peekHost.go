@@ -23,7 +23,9 @@ func peekHostSimple(conn net.Conn) (buf []byte, host string, err error) {
 	if len(lines) > 2 {
 		if strings.Contains(lines[1], "Host") {
 			sl := strings.Split(lines[1], ":")
-			return b, strings.TrimSpace(sl[1]), nil
+			if len(sl) > 1 {
+				return b, strings.TrimSpace(sl[1]), nil
+			}
 		}
 	}
 	return b, "", errors.New("Unable to find host")
