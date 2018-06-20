@@ -15,23 +15,25 @@ import (
 var P = tcpproxy.NewProxy()
 
 func autoUpdateConfig(url string, done chan int) {
-	var config tcpproxy.Config
+	var configs = []tcpproxy.Config{tcpproxy.Config{}, tcpproxy.Config{}}
+	var config *tcpproxy.Config
 	var loadCnt = 0
 	for {
+		config = &configs[loadCnt%2]
 		if rsp, err := http.Get(url); err != nil {
 			log.Println(err)
 		} else {
-			if err = json.NewDecoder(rsp.Body).Decode(&config); err != nil {
+			if err = json.NewDecoder(rsp.Body).Decode(config); err != nil {
 				log.Println(err)
 			} else {
-				log.Println("config", config)
+				log.Println("config", *config)
 				rsp.Body.Close()
-				P.UpdateConfig(&config)
 				if loadCnt == 0 {
 					done <- 1
 				} else {
-					optimizeBackend(&config)
+					optimizeBackend(config)
 				}
+				P.UpdateConfig(config)
 				loadCnt++
 			}
 		}
