@@ -9,19 +9,20 @@ import (
 	"time"
 
 	humanize "github.com/dustin/go-humanize"
-	"github.com/linexjlin/tcpproxy/peektype"
+	"github.com/linexjlin/peektype"
 	"github.com/linexjlin/tcpproxy/sendTraf"
 )
 
 type Config struct {
-	Listen              []string
-	Route               map[string][]string
-	regRoute            map[*regexp.Regexp][]string
-	DefaultHTTPBackends []string
-	FailHTTPBackends    []string
-	DefaultTCPBackends  []string
-	DefaultSSHBackends  []string
-	AddByteUrl          string
+	Listen               []string
+	Route                map[string][]string
+	regRoute             map[*regexp.Regexp][]string
+	DefaultHTTPBackends  []string
+	DefaultHTTPSBackends []string
+	FailHTTPBackends     []string
+	DefaultTCPBackends   []string
+	DefaultSSHBackends   []string
+	AddByteUrl           string
 }
 
 type Taf struct {
@@ -38,7 +39,7 @@ type Proxy struct {
 
 func iocopy(w io.Writer, r io.Reader) (int64, error) {
 	return io.Copy(w, r)
-	buf := make([]byte, 16*1024)
+	buf := make([]byte, 1*1024)
 	var s int64
 	for {
 		if n, err := r.Read(buf); err != nil {
@@ -93,7 +94,7 @@ func (p *Proxy) getRemotes(rType, host string) []string {
 
 		log.Println("FailHTTPBackends")
 		return config.FailHTTPBackends
-	case "TCP":
+	case "HTTPS", "TCP":
 		log.Println("DefaultTCPBackends")
 		return config.DefaultTCPBackends
 	case "SSH":
@@ -104,120 +105,37 @@ func (p *Proxy) getRemotes(rType, host string) []string {
 	return config.DefaultTCPBackends
 }
 
-func (p *Proxy) forwardHTTP(conn net.Conn, host string, dat []byte) {
-	defer conn.Close()
-	remotes := p.getRemotes("HTTP", host)
-	if len(remotes) == 0 {
-		log.Println("Unable to get remote for:", host)
-		return
-	}
+func (p *Proxy) forward(conn net.Conn, remotes []string, dat []byte) int64 {
 	var client net.Conn
 	var err error
-	for i, remote := range remotes {
-		client, err = net.DialTimeout("tcp", remote, time.Millisecond*400)
-		if err == nil {
-			defer client.Close()
-			break
+	for _, remote := range remotes {
+		if client, err = net.DialTimeout("tcp", remote, time.Millisecond*400); err != nil {
+			log.Println(remote, err)
+			continue
 		} else {
-			log.Println(err)
-			if i+1 == len(remotes) {
-				log.Println("All backend server die! Unfortunate:", host)
-				time.Sleep(time.Second * 2)
-				return
-			} else {
-				continue
-			}
+			log.Println(conn.RemoteAddr(), "->", client.RemoteAddr())
+			var sync = make(chan int64, 2)
+
+			go func() {
+				client.Write(dat)
+				n, _ := iocopy(client, conn)
+				sync <- n
+			}()
+
+			go func() {
+				n, _ := iocopy(conn, client)
+				sync <- n
+			}()
+
+			bytes := <-sync
+			conn.Close()
+			client.Close()
+			return bytes
 		}
-	}
-
-	log.Println(conn.RemoteAddr(), "->", host, "->", client.RemoteAddr())
-	user := host
-	userIP := strings.Split(conn.RemoteAddr().String(), ":")[0]
-	if _, ok := p.ut[user]; !ok {
-		p.ut[user] = &Taf{}
-		p.ut[user].ip = userIP
-	}
-
-	var sync = make(chan int, 2)
-	go func() {
-		client.Write(dat)
-		bytes, _ := iocopy(client, conn)
-		p.ut[user].in += uint64(bytes)
-		sync <- 1
-	}()
-
-	go func() {
-		bytes, _ := iocopy(conn, client)
-		p.ut[user].out += uint64(bytes)
-		sync <- 1
-	}()
-
-	<-sync
-}
-
-func (p *Proxy) forward(conn net.Conn, remotes []string, dat []byte) {
-	defer conn.Close()
-	var client net.Conn
-	var err error
-	for i, remote := range remotes {
-		client, err = net.DialTimeout("tcp", remote, time.Millisecond*400)
-		if err == nil {
-			defer client.Close()
-			break
-		} else {
-			log.Println(err)
-			if i+1 == len(remotes) {
-				log.Println("all backend server die")
-				time.Sleep(time.Second * 2)
-				return
-			} else {
-				continue
-			}
-
-		}
-	}
-
-	log.Println(conn.RemoteAddr(), "->", client.RemoteAddr())
-	var sync = make(chan int, 2)
-
-	go func() {
-		client.Write(dat)
-		_, err := iocopy(client, conn)
-		if err != nil {
-			log.Println(err)
-		}
-		sync <- 1
-	}()
-
-	go func() {
-		_, err := iocopy(conn, client)
-		if err != nil {
-			log.Println(err)
-		}
-		sync <- 1
-	}()
-
-	<-sync
-}
-
-func (p *Proxy) forwardTCP(conn net.Conn, dat []byte) {
-	remotes := p.getRemotes("TCP", "")
-	if len(remotes) == 0 {
-		log.Println("Unable to find remote hosts")
+		log.Println("All backend servers are die!")
 		conn.Close()
-	} else {
-		p.forward(conn, remotes, dat)
 	}
-}
-
-func (p *Proxy) forwardSSH(conn net.Conn, dat []byte) {
-	remotes := p.getRemotes("SSH", "")
-	if len(remotes) == 0 {
-		log.Println("Unable to find remote hosts")
-		conn.Close()
-	} else {
-		p.forward(conn, remotes, dat)
-	}
+	return 0
 }
 
 func (p *Proxy) Start() {
@@ -237,7 +155,7 @@ func (p *Proxy) listenAndProxyAll() {
 func (p *Proxy) listenAndProxy(listenAddr string) {
 	listener, err := net.Listen("tcp", listenAddr)
 	if err != nil {
-		log.Fatalf("Failed to setup listener: %v", err)
+		log.Println("Failed to setup listener: %v", err)
 	} else {
 		log.Println("Listen on", listenAddr)
 	}
@@ -248,22 +166,42 @@ func (p *Proxy) listenAndProxy(listenAddr string) {
 		} else {
 			log.Println("accept connectino from:", conn.RemoteAddr())
 			go func() {
-				dat, cType, res, err := peektype.PeekType(conn)
-				if err != nil {
-					log.Println(err)
-					conn.Close()
+				var buf = make([]byte, 512)
+				if n, e := conn.Read(buf); e != nil {
+					log.Println(e)
 				} else {
-					switch cType {
-					case peektype.HTTP:
-						host := res.(string)
-						log.Println("peeked host:", host)
-						go p.forwardHTTP(conn, host, dat)
+					peek := peektype.NewPeek()
+					peek.SetBuf(&buf)
+					t := peek.Parse()
+
+					var remotes []string
+					var hostname = peek.Hostname
+					switch t {
 					case peektype.SSH:
 						log.Println("SSH")
-						go p.forwardSSH(conn, dat)
-					case peektype.NORMALTCP:
-						log.Println("TCP")
-						go p.forwardTCP(conn, dat)
+						remotes = p.getRemotes("SSH", "")
+					case peektype.HTTP:
+						remotes = p.getRemotes("HTTP", peek.Hostname)
+					case peektype.HTTPS:
+						remotes = p.getRemotes("HTTPS", peek.Hostname)
+					case peektype.UNKNOWN:
+						remotes = p.getRemotes("TCP", peek.Hostname)
+					}
+
+					if len(remotes) == 0 {
+						log.Println("Unable to find remote hosts")
+						conn.Close()
+					} else {
+						n := p.forward(conn, remotes, buf[:n])
+						user := hostname
+						userIP := strings.Split(conn.RemoteAddr().String(), ":")[0]
+						if _, ok := p.ut[user]; !ok {
+							p.ut[user] = &Taf{}
+							p.ut[user].ip = userIP
+						}
+						log.Println(n, "bytes sent for", user)
+						p.ut[user].in += uint64(n)
+						p.ut[user].out += uint64(n)
 					}
 				}
 			}()
