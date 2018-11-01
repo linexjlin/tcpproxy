@@ -10,6 +10,7 @@ import (
 
 	humanize "github.com/dustin/go-humanize"
 	"github.com/linexjlin/peektype"
+	limit "github.com/linexjlin/tcpproxy/limitip"
 	"github.com/linexjlin/tcpproxy/sendTraf"
 )
 
@@ -38,14 +39,13 @@ type Proxy struct {
 }
 
 func iocopy(w io.Writer, r io.Reader) (int64, error) {
-	return io.Copy(w, r)
-	buf := make([]byte, 1*1024)
+	buf := make([]byte, 1)
 	var s int64
 	for {
 		if n, err := r.Read(buf); err != nil {
 			return s, err
 		} else {
-			w.Write(buf[0:n])
+			w.Write(buf[:n-1])
 			s += int64(n)
 		}
 	}
@@ -75,7 +75,7 @@ func (p *Proxy) GetConfig() *Config {
 func (p *Proxy) getRemotes(rType, host string) []string {
 	config := p.GetConfig()
 	switch rType {
-	case "HTTP":
+	case "HTTP", "HTTPS":
 		if r, ok := config.Route[host]; ok {
 			if len(r) == 0 {
 				log.Println("DefaultHTTPBackends")
@@ -94,7 +94,7 @@ func (p *Proxy) getRemotes(rType, host string) []string {
 
 		log.Println("FailHTTPBackends")
 		return config.FailHTTPBackends
-	case "HTTPS", "TCP":
+	case "TCP":
 		log.Println("DefaultTCPBackends")
 		return config.DefaultTCPBackends
 	case "SSH":
@@ -113,21 +113,22 @@ func (p *Proxy) forward(conn net.Conn, remotes []string, dat []byte) int64 {
 			log.Println(remote, err)
 			continue
 		} else {
-			log.Println(conn.RemoteAddr(), "->", client.RemoteAddr())
+			//log.Println(conn.RemoteAddr(), "->", client.RemoteAddr())
 			var sync = make(chan int64, 2)
 
 			go func() {
 				client.Write(dat)
-				n, _ := iocopy(client, conn)
+				n, _ := io.Copy(client, conn)
 				sync <- n
 			}()
 
 			go func() {
-				n, _ := iocopy(conn, client)
+				n, _ := io.Copy(conn, client)
 				sync <- n
 			}()
 
 			bytes := <-sync
+			bytes = <-sync
 			conn.Close()
 			client.Close()
 			return bytes
@@ -152,10 +153,12 @@ func (p *Proxy) listenAndProxyAll() {
 	}
 }
 
+var LIM = limit.NewLIMIT()
+
 func (p *Proxy) listenAndProxy(listenAddr string) {
 	listener, err := net.Listen("tcp", listenAddr)
 	if err != nil {
-		log.Println("Failed to setup listener: %v", err)
+		log.Println("Failed to setup listener:", err)
 	} else {
 		log.Println("Listen on", listenAddr)
 	}
@@ -164,7 +167,8 @@ func (p *Proxy) listenAndProxy(listenAddr string) {
 		if conn, err := listener.Accept(); err != nil {
 			log.Println(err)
 		} else {
-			log.Println("accept connectino from:", conn.RemoteAddr())
+			//log.Println("accept connectino from:", conn.RemoteAddr())
+			ip := strings.Split(conn.RemoteAddr().String(), ":")[0]
 			go func() {
 				var buf = make([]byte, 512)
 				if n, e := conn.Read(buf); e != nil {
@@ -176,14 +180,20 @@ func (p *Proxy) listenAndProxy(listenAddr string) {
 
 					var remotes []string
 					var hostname = peek.Hostname
+					if hostname != "" && !LIM.Check(hostname, ip) {
+						log.Println("Max IP reach:", hostname, ip)
+						conn.Close()
+						return
+					}
 					switch t {
 					case peektype.SSH:
-						log.Println("SSH")
 						remotes = p.getRemotes("SSH", "")
 					case peektype.HTTP:
 						remotes = p.getRemotes("HTTP", peek.Hostname)
+						log.Println("peekhost:", hostname)
 					case peektype.HTTPS:
 						remotes = p.getRemotes("HTTPS", peek.Hostname)
+						log.Println("peekhost:", hostname)
 					case peektype.UNKNOWN:
 						remotes = p.getRemotes("TCP", peek.Hostname)
 					}
@@ -194,12 +204,11 @@ func (p *Proxy) listenAndProxy(listenAddr string) {
 					} else {
 						n := p.forward(conn, remotes, buf[:n])
 						user := hostname
-						userIP := strings.Split(conn.RemoteAddr().String(), ":")[0]
 						if _, ok := p.ut[user]; !ok {
 							p.ut[user] = &Taf{}
-							p.ut[user].ip = userIP
+							p.ut[user].ip = ip
 						}
-						log.Println(n, "bytes sent for", user)
+						log.Println(hostname, "(", ip, ")", "->", remotes[0], " traffic:", n)
 						p.ut[user].in += uint64(n)
 						p.ut[user].out += uint64(n)
 					}

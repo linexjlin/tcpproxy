@@ -26,14 +26,15 @@ func autoUpdateConfig(url string, done chan int) {
 			if err = json.NewDecoder(rsp.Body).Decode(config); err != nil {
 				log.Println(err)
 			} else {
-				log.Println("config", *config)
+				log.Println("Load config success!")
 				rsp.Body.Close()
 				if loadCnt == 0 {
 					done <- 1
+					P.UpdateConfig(config)
 				} else {
 					optimizeBackend(config)
+					P.UpdateConfig(config)
 				}
-				P.UpdateConfig(config)
 				loadCnt++
 			}
 		}
