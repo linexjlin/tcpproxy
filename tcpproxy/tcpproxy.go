@@ -174,8 +174,9 @@ func (p *Proxy) listenAndProxy(listenAddr string) {
 				if n, e := conn.Read(buf); e != nil {
 					log.Println(e)
 				} else {
+					buf = buf[:n]
 					peek := peektype.NewPeek()
-					peek.SetBuf(&buf)
+					peek.SetBuf(buf)
 					t := peek.Parse()
 
 					var remotes []string
