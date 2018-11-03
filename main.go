@@ -29,8 +29,8 @@ func autoUpdateConfig(url string, done chan int) {
 				log.Println("Load config success!")
 				rsp.Body.Close()
 				if loadCnt == 0 {
-					done <- 1
 					P.UpdateConfig(config)
+					done <- 1
 				} else {
 					optimizeBackend(config)
 					P.UpdateConfig(config)
