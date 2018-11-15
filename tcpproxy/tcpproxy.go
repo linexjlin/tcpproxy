@@ -4,7 +4,6 @@ import (
 	"io"
 	"log"
 	"net"
-	"regexp"
 	"strings"
 	"time"
 
@@ -14,6 +13,53 @@ import (
 	"github.com/linexjlin/tcpproxy/sendTraf"
 )
 
+const (
+	UHTTP = iota
+	UHTTPS
+	NHTTP
+	NHTTPS
+	FHTTP
+	FHTTPS
+	SSH
+	LISTEN
+	UNKNOWN
+)
+
+type Rule struct {
+	rtype int
+	name  string
+}
+
+type Backend struct {
+	services []string
+	maxIP    int
+	policy   string
+}
+
+type Route struct {
+	rules map[Rule]Backend
+}
+
+func (r *Route) Add(rtype int, name string, maxIP int, policy string, services []string) {
+	var rule Rule
+	rule.name = name
+	rule.rtype = rtype
+
+	var backend Backend
+	backend.maxIP = maxIP
+	backend.services = services
+	if _, ok := r.rules[rule]; !ok {
+		r.rules[rule] = backend
+	}
+}
+
+func NewRoute() *Route {
+	var r Route
+	r.rules = make(map[Rule]Backend)
+	return &r
+}
+
+/*
 type Config struct {
 	Listen               []string
 	Route                map[string][]string
@@ -24,7 +70,7 @@ type Config struct {
 	DefaultTCPBackends   []string
 	DefaultSSHBackends   []string
 	AddByteUrl           string
-}
+}*/
 
 type Taf struct {
 	in  uint64
@@ -33,76 +79,80 @@ type Taf struct {
 }
 
 type Proxy struct {
-	cfg                        *Config
-	SendTraf, SendByes, SendIP bool
+	route                      *Route
+	sendTraf, sendByes, sendIP bool
 	ut                         map[string]*Taf
+	listeners                  map[string]net.Listener
+	AddByteUrl                 string
 }
 
-func iocopy(w io.Writer, r io.Reader) (int64, error) {
-	buf := make([]byte, 1)
-	var s int64
-	for {
-		if n, err := r.Read(buf); err != nil {
-			return s, err
-		} else {
-			w.Write(buf[:n-1])
-			s += int64(n)
-		}
-	}
-}
-
-func NewProxy() *Proxy {
+func NewProxy(sendTraf, sendByes, sendIP bool) *Proxy {
 	p := Proxy{}
+	p.sendTraf = sendTraf
+	p.sendByes = sendByes
+	p.sendIP = sendIP
 	p.ut = make(map[string]*Taf)
+	p.listeners = make(map[string]net.Listener)
 	return &p
 }
 
-func (p *Proxy) UpdateConfig(new *Config) {
-	new.regRoute = make(map[*regexp.Regexp][]string)
-	for rs, v := range new.Route {
-		if len(v) > 0 {
-			r := regexp.MustCompile(rs)
-			new.regRoute[r] = v
-		}
-	}
-	p.cfg = new
+func (p *Proxy) SetRoute(route *Route) {
+	p.route = route
+	p.checkListenAndProxy()
 }
 
-func (p *Proxy) GetConfig() *Config {
-	return p.cfg
+func (p *Proxy) checkListenAndProxy() {
+	if b, ok := p.route.rules[Rule{LISTEN, "LISTEN"}]; ok {
+		if len(b.services) > 0 {
+			for _, addr := range b.services {
+				if _, ok := p.listeners[addr]; !ok {
+					go p.listenAndProxy(addr)
+				}
+			}
+		}
+	}
 }
 
 func (p *Proxy) getRemotes(rType, host string) []string {
-	config := p.GetConfig()
 	switch rType {
-	case "HTTP", "HTTPS":
-		if r, ok := config.Route[host]; ok {
-			if len(r) == 0 {
-				log.Println("DefaultHTTPBackends")
-				return config.DefaultHTTPBackends
+	case "HTTP":
+		if b, ok := p.route.rules[Rule{UHTTP, host}]; ok {
+			if len(b.services) > 0 {
+				log.Println("User HTTP")
+				return b.services
 			} else {
-				log.Println("UserRoute")
-				return r
+				log.Println("System HTTP Backends")
+				return p.route.rules[Rule{NHTTP, host}].services
 			}
 		}
-		for r, h := range config.regRoute {
-			if r.MatchString(host) {
-				log.Println("RegRoute")
-				return h
+		log.Println("Unknown HTTP Backends", host)
+		return p.route.rules[Rule{FHTTP, host}].services
+	case "HTTPS":
+		if b, ok := p.route.rules[Rule{UHTTPS, host}]; ok {
+			if len(b.services) > 0 {
+				log.Println("User HTTPS")
+				return b.services
+			} else {
+				log.Println("System HTTPS Backends")
+				return p.route.rules[Rule{NHTTPS, host}].services
 			}
 		}
-
-		log.Println("FailHTTPBackends")
-		return config.FailHTTPBackends
-	case "TCP":
-		log.Println("DefaultTCPBackends")
-		return config.DefaultTCPBackends
+		log.Println("Unknown HTTPS Backends", host)
+		return p.route.rules[Rule{FHTTPS, host}].services
 	case "SSH":
-		log.Println("DefaultSSHBackends")
-		return config.DefaultSSHBackends
+		host = "SSH"
+		if b, ok := p.route.rules[Rule{SSH, host}]; ok {
+			if len(b.services) > 0 {
+				log.Println("UserRoute")
+				return b.services
+			}
+		}
+		host = "UNKNOWN"
+		return p.route.rules[Rule{UNKNOWN, host}].services
+	default:
+		host = "UNKNOWN"
+		return p.route.rules[Rule{UNKNOWN, host}].services
 	}
-	log.Println("DefaultTCPBackends")
-	return config.DefaultTCPBackends
 }
 
 func (p *Proxy) forward(conn net.Conn, remotes []string, dat []byte) int64 {
@@ -142,17 +192,10 @@ func (p *Proxy) forward(conn net.Conn, remotes []string, dat []byte) int64 {
 	return 0
 }
 
-func (p *Proxy) Start() {
-	p.listenAndProxyAll()
-	if p.SendTraf {
-		go p.AutoSentTraf(time.Minute * 2)
-	}
-}
-
-func (p *Proxy) listenAndProxyAll() {
-	config := p.GetConfig()
-	for _, addr := range config.Listen {
-		go p.listenAndProxy(addr)
+func (p *Proxy) Start(route *Route) {
+	p.SetRoute(route)
+	if p.sendTraf {
+		go p.autoSentTraf(time.Minute * 2)
 	}
 }
 
@@ -162,6 +205,7 @@ func (p *Proxy) listenAndProxy(listenAddr string) {
 	listener, err := net.Listen("tcp", listenAddr)
 	if err != nil {
 		log.Println("Failed to setup listener:", err)
+		return
 	} else {
 		log.Println("Listen on", listenAddr)
 	}
@@ -222,7 +266,7 @@ func (p *Proxy) listenAndProxy(listenAddr string) {
 	}
 }
 
-func (p *Proxy) AutoSentTraf(interval time.Duration) {
+func (p *Proxy) autoSentTraf(interval time.Duration) {
 	var from = time.Now()
 	for {
 		time.Sleep(interval)
@@ -230,13 +274,13 @@ func (p *Proxy) AutoSentTraf(interval time.Duration) {
 			if t.out == 0 {
 				continue
 			} else {
-				if !p.SendIP {
+				if !p.sendIP {
 					t.ip = ""
 				}
-				if p.SendByes {
-					sendTraf.SendTraf(u, t.ip, p.cfg.AddByteUrl, uint64(t.in), uint64(t.out))
+				if p.sendByes {
+					sendTraf.SendTraf(u, t.ip, p.AddByteUrl, uint64(t.in), uint64(t.out))
 				} else {
-					sendTraf.SendTraf(u, t.ip, p.cfg.AddByteUrl, 0, 0)
+					sendTraf.SendTraf(u, t.ip, p.AddByteUrl, 0, 0)
 				}
 				log.Println(t.ip, u, humanize.Bytes(uint64(float64(t.out)/time.Now().Sub(from).Seconds())), "/s↓",
 					humanize.Bytes(uint64(float64(t.in)/time.Now().Sub(from).Seconds())), "/s↑")

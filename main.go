@@ -4,16 +4,14 @@ import (
 	"encoding/json"
 	"flag"
 	"log"
-	"net/http"
 	"os"
-	"time"
 
-	"github.com/linexjlin/tcpproxy/tcplatency"
 	"github.com/linexjlin/tcpproxy/tcpproxy"
 )
 
-var P = tcpproxy.NewProxy()
+var P = tcpproxy.NewProxy(false, false, false)
 
+/*
 func autoUpdateConfig(url string, done chan int) {
 	var configs = []tcpproxy.Config{tcpproxy.Config{}, tcpproxy.Config{}}
 	var config *tcpproxy.Config
@@ -40,13 +38,14 @@ func autoUpdateConfig(url string, done chan int) {
 		}
 		time.Sleep(time.Minute * 10)
 	}
-}
+}*/
 
+/*
 func optimizeBackend(c *tcpproxy.Config) {
 	tcplatency.OrderHostByBackup(c.DefaultHTTPBackends)
 	tcplatency.OrderHostByBackup(c.DefaultTCPBackends)
 	tcplatency.OrderHostByBackup(c.FailHTTPBackends)
-}
+}*/
 
 func main() {
 	conf := flag.String("f", "./proxy.conf", "/etc/proxy.conf")
