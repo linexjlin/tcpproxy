@@ -128,7 +128,10 @@ func (p *Proxy) forward(conn net.Conn, remotes []string, dat []byte) int64 {
 			}()
 
 			bytes := <-sync
-			bytes = <-sync
+			select {
+			case bytes = <-sync:
+			case <-time.After(time.Second * 20):
+			}
 			conn.Close()
 			client.Close()
 			return bytes
