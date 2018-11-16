@@ -11,6 +11,7 @@ import (
 	"github.com/linexjlin/peektype"
 	limit "github.com/linexjlin/tcpproxy/limitip"
 	"github.com/linexjlin/tcpproxy/sendTraf"
+	tl "github.com/linexjlin/tcpproxy/tcplatency"
 )
 
 const (
@@ -53,24 +54,19 @@ func (r *Route) Add(rtype int, name string, maxIP int, policy string, services [
 	}
 }
 
+func (r *Route) OptimizeBackend() {
+	for rule, backends := range r.rules {
+		if rule.rtype != LISTEN {
+			tl.OrderHostByBackup(backends.services)
+		}
+	}
+}
+
 func NewRoute() *Route {
 	var r Route
 	r.rules = make(map[Rule]Backend)
 	return &r
 }
-
-/*
-type Config struct {
-	Listen               []string
-	Route                map[string][]string
-	regRoute             map[*regexp.Regexp][]string
-	DefaultHTTPBackends  []string
-	DefaultHTTPSBackends []string
-	FailHTTPBackends     []string
-	DefaultTCPBackends   []string
-	DefaultSSHBackends   []string
-	AddByteUrl           string
-}*/
 
 type Taf struct {
 	in  uint64
@@ -83,14 +79,15 @@ type Proxy struct {
 	sendTraf, sendByes, sendIP bool
 	ut                         map[string]*Taf
 	listeners                  map[string]net.Listener
-	AddByteUrl                 string
+	addByteUrl                 string
 }
 
-func NewProxy(sendTraf, sendByes, sendIP bool) *Proxy {
+func NewProxy(sendTraf, sendByes, sendIP bool, url string) *Proxy {
 	p := Proxy{}
 	p.sendTraf = sendTraf
 	p.sendByes = sendByes
 	p.sendIP = sendIP
+	p.addByteUrl = url
 	p.ut = make(map[string]*Taf)
 	p.listeners = make(map[string]net.Listener)
 	return &p
@@ -180,7 +177,7 @@ func (p *Proxy) forward(conn net.Conn, remotes []string, dat []byte) int64 {
 			bytes := <-sync
 			select {
 			case bytes = <-sync:
-			case <-time.After(time.Second * 20):
+			case <-time.After(time.Second * 10):
 			}
 			conn.Close()
 			client.Close()
@@ -192,8 +189,7 @@ func (p *Proxy) forward(conn net.Conn, remotes []string, dat []byte) int64 {
 	return 0
 }
 
-func (p *Proxy) Start(route *Route) {
-	p.SetRoute(route)
+func (p *Proxy) Start() {
 	if p.sendTraf {
 		go p.autoSentTraf(time.Minute * 2)
 	}
@@ -278,9 +274,9 @@ func (p *Proxy) autoSentTraf(interval time.Duration) {
 					t.ip = ""
 				}
 				if p.sendByes {
-					sendTraf.SendTraf(u, t.ip, p.AddByteUrl, uint64(t.in), uint64(t.out))
+					sendTraf.SendTraf(u, t.ip, p.addByteUrl, uint64(t.in), uint64(t.out))
 				} else {
-					sendTraf.SendTraf(u, t.ip, p.AddByteUrl, 0, 0)
+					sendTraf.SendTraf(u, t.ip, p.addByteUrl, 0, 0)
 				}
 				log.Println(t.ip, u, humanize.Bytes(uint64(float64(t.out)/time.Now().Sub(from).Seconds())), "/s↓",
 					humanize.Bytes(uint64(float64(t.in)/time.Now().Sub(from).Seconds())), "/s↑")

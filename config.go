@@ -1,10 +1,13 @@
 package main
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
+	"time"
 
 	tp "github.com/linexjlin/tcpproxy/tcpproxy"
 )
@@ -59,9 +62,9 @@ func getConfig(url string) (Config, error) {
 
 func config2route(c *Config) *tp.Route {
 	r := tp.NewRoute()
-	var ss []string
 
 	if c.Listen.ServiceGroup != nil {
+		var ss []string
 		for _, s := range c.Listen.Services {
 			ss = append(ss, fmt.Sprintf("%s:%d", s.IP, s.Port))
 		}
@@ -69,7 +72,7 @@ func config2route(c *Config) *tp.Route {
 	}
 
 	if c.HTTP.HTTP.ServiceGroup != nil {
-		ss = ss[:0]
+		var ss []string
 		for _, s := range c.HTTP.HTTP.Services {
 			ss = append(ss, fmt.Sprintf("%s:%d", s.IP, s.Port))
 		}
@@ -77,7 +80,7 @@ func config2route(c *Config) *tp.Route {
 	}
 
 	if c.HTTP.HTTPS.ServiceGroup != nil {
-		ss = ss[:0]
+		var ss []string
 		for _, s := range c.HTTP.HTTPS.Services {
 			ss = append(ss, fmt.Sprintf("%s:%d", s.IP, s.Port))
 		}
@@ -85,7 +88,7 @@ func config2route(c *Config) *tp.Route {
 	}
 
 	if c.UnknownHTTP.HTTP.ServiceGroup != nil {
-		ss = ss[:0]
+		var ss []string
 		for _, s := range c.UnknownHTTP.HTTP.Services {
 			ss = append(ss, fmt.Sprintf("%s:%d", s.IP, s.Port))
 		}
@@ -93,7 +96,7 @@ func config2route(c *Config) *tp.Route {
 	}
 
 	if c.UnknownHTTP.HTTPS.ServiceGroup != nil {
-		ss = ss[:0]
+		var ss []string
 		for _, s := range c.UnknownHTTP.HTTPS.Services {
 			ss = append(ss, fmt.Sprintf("%s:%d", s.IP, s.Port))
 		}
@@ -101,7 +104,7 @@ func config2route(c *Config) *tp.Route {
 	}
 
 	if c.SSH.ServiceGroup != nil {
-		ss = ss[:0]
+		var ss []string
 		for _, s := range c.SSH.Services {
 			ss = append(ss, fmt.Sprintf("%s:%d", s.IP, s.Port))
 		}
@@ -109,7 +112,7 @@ func config2route(c *Config) *tp.Route {
 	}
 
 	if c.Unknown.ServiceGroup != nil {
-		ss = ss[:0]
+		var ss []string
 		for _, s := range c.Unknown.Services {
 			ss = append(ss, fmt.Sprintf("%s:%d", s.IP, s.Port))
 		}
@@ -118,7 +121,7 @@ func config2route(c *Config) *tp.Route {
 
 	for _, h := range c.Hosts {
 		if h.HTTP.ServiceGroup != nil {
-			ss = ss[:0]
+			var ss []string
 			for _, s := range h.HTTP.Services {
 				ss = append(ss, fmt.Sprintf("%s:%d", s.IP, s.Port))
 			}
@@ -126,7 +129,7 @@ func config2route(c *Config) *tp.Route {
 		}
 
 		if h.HTTPS.ServiceGroup != nil {
-			ss = ss[:0]
+			var ss []string
 			for _, s := range h.HTTPS.Services {
 				ss = append(ss, fmt.Sprintf("%s:%d", s.IP, s.Port))
 			}
@@ -135,4 +138,28 @@ func config2route(c *Config) *tp.Route {
 	}
 
 	return r
+}
+
+func autoUpdateConfig(url string) {
+	var hash string
+	h := sha256.New()
+	for {
+		if config, err := getConfig(url); err != nil {
+			log.Println(err)
+		} else {
+			dat, _ := json.Marshal(config)
+			h.Write(dat)
+			hashed := h.Sum(nil)
+			hashNew := hex.EncodeToString(hashed)
+			h.Reset()
+			log.Println("Config Hash:", hashNew)
+			if hashNew != hash {
+				r := config2route(&config)
+				r.OptimizeBackend()
+				P.SetRoute(r)
+				hash = hashNew
+			}
+		}
+		time.Sleep(time.Minute * 1)
+	}
 }
