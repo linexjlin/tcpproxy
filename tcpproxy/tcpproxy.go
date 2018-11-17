@@ -62,6 +62,12 @@ func (r *Route) OptimizeBackend() {
 	}
 }
 
+func (r *Route) PrintRules() {
+	for k, v := range r.rules {
+		log.Println(k, v)
+	}
+}
+
 func NewRoute() *Route {
 	var r Route
 	r.rules = make(map[Rule]Backend)
@@ -95,6 +101,7 @@ func NewProxy(sendTraf, sendByes, sendIP bool, url string) *Proxy {
 
 func (p *Proxy) SetRoute(route *Route) {
 	p.route = route
+	p.route.PrintRules()
 	p.checkListenAndProxy()
 }
 
@@ -119,11 +126,11 @@ func (p *Proxy) getRemotes(rType, host string) []string {
 				return b.services
 			} else {
 				log.Println("System HTTP Backends")
-				return p.route.rules[Rule{NHTTP, host}].services
+				return p.route.rules[Rule{NHTTP, ""}].services
 			}
 		}
 		log.Println("Unknown HTTP Backends", host)
-		return p.route.rules[Rule{FHTTP, host}].services
+		return p.route.rules[Rule{FHTTP, ""}].services
 	case "HTTPS":
 		if b, ok := p.route.rules[Rule{UHTTPS, host}]; ok {
 			if len(b.services) > 0 {
@@ -131,35 +138,39 @@ func (p *Proxy) getRemotes(rType, host string) []string {
 				return b.services
 			} else {
 				log.Println("System HTTPS Backends")
-				return p.route.rules[Rule{NHTTPS, host}].services
+				return p.route.rules[Rule{NHTTPS, ""}].services
 			}
 		}
 		log.Println("Unknown HTTPS Backends", host)
-		return p.route.rules[Rule{FHTTPS, host}].services
+		return p.route.rules[Rule{FHTTPS, ""}].services
 	case "SSH":
 		host = "SSH"
-		if b, ok := p.route.rules[Rule{SSH, host}]; ok {
+		if b, ok := p.route.rules[Rule{SSH, ""}]; ok {
 			if len(b.services) > 0 {
 				log.Println("UserRoute")
 				return b.services
 			}
 		}
 		host = "UNKNOWN"
-		return p.route.rules[Rule{UNKNOWN, host}].services
+		return p.route.rules[Rule{UNKNOWN, ""}].services
 	default:
 		host = "UNKNOWN"
-		return p.route.rules[Rule{UNKNOWN, host}].services
+		return p.route.rules[Rule{UNKNOWN, ""}].services
 	}
 }
 
-func (p *Proxy) forward(conn net.Conn, remotes []string, dat []byte) int64 {
+func (p *Proxy) forward(conn net.Conn, remotes []string, dat []byte) (int64, string) {
 	var client net.Conn
 	var err error
-	for _, remote := range remotes {
-		if client, err = net.DialTimeout("tcp", remote, time.Millisecond*400); err != nil {
+	for i, remote := range remotes {
+		if client, err = net.DialTimeout("tcp", remote, time.Millisecond*300); err != nil {
 			log.Println(remote, err)
 			continue
 		} else {
+			if i > 0 {
+				log.Println("change first remote to:", remote)
+				remotes[0] = remote
+			}
 			//log.Println(conn.RemoteAddr(), "->", client.RemoteAddr())
 			var sync = make(chan int64, 2)
 
@@ -181,12 +192,12 @@ func (p *Proxy) forward(conn net.Conn, remotes []string, dat []byte) int64 {
 			}
 			conn.Close()
 			client.Close()
-			return bytes
+			return bytes, remote
 		}
 		log.Println("All backend servers are die!")
 		conn.Close()
 	}
-	return 0
+	return 0, ""
 }
 
 func (p *Proxy) Start() {
@@ -246,13 +257,13 @@ func (p *Proxy) listenAndProxy(listenAddr string) {
 						log.Println("Unable to find remote hosts")
 						conn.Close()
 					} else {
-						n := p.forward(conn, remotes, buf[:n])
+						n, remote := p.forward(conn, remotes, buf[:n])
 						user := hostname
 						if _, ok := p.ut[user]; !ok {
 							p.ut[user] = &Taf{}
 							p.ut[user].ip = ip
 						}
-						log.Println(hostname, "(", ip, ")", "->", remotes[0], " traffic:", n)
+						log.Println(hostname, "(", ip, ")", "->", remote, " traffic:", n)
 						p.ut[user].in += uint64(n)
 						p.ut[user].out += uint64(n)
 					}
