@@ -86,14 +86,16 @@ type Proxy struct {
 	ut                         map[string]*Taf
 	listeners                  map[string]net.Listener
 	addByteUrl                 string
+	name                       string
 }
 
-func NewProxy(sendTraf, sendByes, sendIP bool, url string) *Proxy {
+func NewProxy(sendTraf, sendByes, sendIP bool, url, name string) *Proxy {
 	p := Proxy{}
 	p.sendTraf = sendTraf
 	p.sendByes = sendByes
 	p.sendIP = sendIP
 	p.addByteUrl = url
+	p.name = name
 	p.ut = make(map[string]*Taf)
 	p.listeners = make(map[string]net.Listener)
 	return &p
@@ -215,6 +217,7 @@ func (p *Proxy) listenAndProxy(listenAddr string) {
 		return
 	} else {
 		log.Println("Listen on", listenAddr)
+		p.listeners[listenAddr] = listener
 	}
 
 	for {
@@ -235,11 +238,11 @@ func (p *Proxy) listenAndProxy(listenAddr string) {
 
 					var remotes []string
 					var hostname = peek.Hostname
-					if hostname != "" && !LIM.Check(hostname, ip) {
+					/*if hostname != "" && !LIM.Check(hostname, ip) {
 						log.Println("Max IP reach:", hostname, ip)
 						conn.Close()
 						return
-					}
+					}*/
 					switch t {
 					case peektype.SSH:
 						remotes = p.getRemotes("SSH", "")
@@ -285,9 +288,9 @@ func (p *Proxy) autoSentTraf(interval time.Duration) {
 					t.ip = ""
 				}
 				if p.sendByes {
-					sendTraf.SendTraf(u, t.ip, p.addByteUrl, uint64(t.in), uint64(t.out))
+					sendTraf.SendTraf(u, t.ip, p.addByteUrl, p.name, uint64(t.in), uint64(t.out))
 				} else {
-					sendTraf.SendTraf(u, t.ip, p.addByteUrl, 0, 0)
+					sendTraf.SendTraf(u, t.ip, p.addByteUrl, p.name, 0, 0)
 				}
 				log.Println(t.ip, u, humanize.Bytes(uint64(float64(t.out)/time.Now().Sub(from).Seconds())), "/s↓",
 					humanize.Bytes(uint64(float64(t.in)/time.Now().Sub(from).Seconds())), "/s↑")

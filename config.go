@@ -49,20 +49,31 @@ type Config struct {
 	Hosts       map[string]HostInfo `json:",omitempty"`
 }
 
-func getConfig(url string) (Config, error) {
+func getConfig(url, server string) (Config, error) {
 	var config Config
-	if rsp, err := http.Get(url); err != nil {
+
+	if req, err := http.NewRequest("GET", url, nil); err != nil {
 		log.Println(err)
 		return config, err
 	} else {
-		if err = json.NewDecoder(rsp.Body).Decode(&config); err != nil {
+		q := req.URL.Query()
+		q.Add("server", server)
+		req.URL.RawQuery = q.Encode()
+		client := http.Client{}
+		if rsp, err := client.Do(req); err != nil {
 			log.Println(err)
 			return config, err
 		} else {
-			log.Println("Load config success!")
+			if err = json.NewDecoder(rsp.Body).Decode(&config); err != nil {
+				log.Println(err)
+				return config, err
+			} else {
+				log.Println("Load config success!")
+			}
 			rsp.Body.Close()
 		}
 	}
+
 	return config, nil
 }
 
@@ -152,11 +163,11 @@ func config2route(c *Config) *tp.Route {
 	return r
 }
 
-func autoUpdateConfig(url string) {
+func autoUpdateConfig(url, server string) {
 	var hash string
 	h := sha256.New()
 	for {
-		if config, err := getConfig(url); err != nil {
+		if config, err := getConfig(url, server); err != nil {
 			log.Println(err)
 		} else {
 			dat, _ := json.Marshal(config)

@@ -6,7 +6,7 @@ import (
 	"net/http"
 )
 
-func SendTraf(user, userIP, url string, in, out uint64) {
+func SendTraf(user, userIP, url, server string, in, out uint64) {
 	if url == "" {
 		return
 	}
@@ -17,6 +17,7 @@ func SendTraf(user, userIP, url string, in, out uint64) {
 		q := req.URL.Query()
 		q.Add("user", user)
 		q.Add("userIP", userIP)
+		q.Add("server", server)
 		q.Add("in", fmt.Sprint(in))
 		q.Add("out", fmt.Sprint(out))
 		req.URL.RawQuery = q.Encode()

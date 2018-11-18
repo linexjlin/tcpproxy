@@ -17,18 +17,24 @@ func main() {
 	sendTraf := flag.Bool("t", false, "weather send host's traffic to remote")
 	sendBytes := flag.Bool("b", false, "weather send bytes of host traffic")
 	sendIP := flag.Bool("i", false, "weahter send IP of host")
+	name := flag.String("n", "", "server name")
 	flag.Parse()
 
-	P = tp.NewProxy(*sendTraf, *sendBytes, *sendIP, *addBytesUrl)
+	if *name == "" {
+		log.Fatal("server name can't not be empty!")
+	}
+	P = tp.NewProxy(*sendTraf, *sendBytes, *sendIP, *addBytesUrl, *name)
 
-	if config, err := getConfig(*url); err != nil {
+	if config, err := getConfig(*url, *name); err != nil {
 		log.Fatal(err)
 	} else {
 		r := config2route(&config)
+
+		log.Println("get route", r)
 		P.SetRoute(r)
-		go P.Start()
+		P.Start()
 		if (*url) != "" {
-			autoUpdateConfig(*url)
+			autoUpdateConfig(*url, *name)
 		}
 	}
 }
