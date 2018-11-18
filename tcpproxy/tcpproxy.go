@@ -119,28 +119,32 @@ func (p *Proxy) checkListenAndProxy() {
 	}
 }
 
-func (p *Proxy) getRemotes(rType, host string) []string {
+func (p *Proxy) getRemotes(rType, host, ip string) []string {
 	switch rType {
 	case "HTTP":
 		if b, ok := p.route.rules[Rule{UHTTP, host}]; ok {
-			if len(b.services) > 0 {
-				log.Println("User HTTP")
-				return b.services
-			} else {
-				log.Println("System HTTP Backends")
-				return p.route.rules[Rule{NHTTP, ""}].services
+			if LIM.Check(host, ip, b.maxIP) || b.maxIP < 1 {
+				if len(b.services) > 0 {
+					log.Println("User HTTP")
+					return b.services
+				} else {
+					log.Println("System HTTP Backends")
+					return p.route.rules[Rule{NHTTP, ""}].services
+				}
 			}
 		}
 		log.Println("Unknown HTTP Backends", host)
 		return p.route.rules[Rule{FHTTP, ""}].services
 	case "HTTPS":
 		if b, ok := p.route.rules[Rule{UHTTPS, host}]; ok {
-			if len(b.services) > 0 {
-				log.Println("User HTTPS")
-				return b.services
-			} else {
-				log.Println("System HTTPS Backends")
-				return p.route.rules[Rule{NHTTPS, ""}].services
+			if LIM.Check(host, ip, b.maxIP) || b.maxIP < 1 {
+				if len(b.services) > 0 {
+					log.Println("User HTTPS")
+					return b.services
+				} else {
+					log.Println("System HTTPS Backends")
+					return p.route.rules[Rule{NHTTPS, ""}].services
+				}
 			}
 		}
 		log.Println("Unknown HTTPS Backends", host)
@@ -148,11 +152,14 @@ func (p *Proxy) getRemotes(rType, host string) []string {
 	case "SSH":
 		host = "SSH"
 		if b, ok := p.route.rules[Rule{SSH, ""}]; ok {
-			if len(b.services) > 0 {
-				log.Println("UserRoute")
-				return b.services
+			if LIM.Check(host, ip, b.maxIP) || b.maxIP < 1 {
+				if len(b.services) > 0 {
+					log.Println("UserRoute")
+					return b.services
+				}
 			}
 		}
+
 		host = "UNKNOWN"
 		return p.route.rules[Rule{UNKNOWN, ""}].services
 	default:
@@ -245,15 +252,15 @@ func (p *Proxy) listenAndProxy(listenAddr string) {
 					}*/
 					switch t {
 					case peektype.SSH:
-						remotes = p.getRemotes("SSH", "")
+						remotes = p.getRemotes("SSH", "", ip)
 					case peektype.HTTP:
-						remotes = p.getRemotes("HTTP", peek.Hostname)
+						remotes = p.getRemotes("HTTP", peek.Hostname, ip)
 						log.Println("peekhost:", hostname)
 					case peektype.HTTPS:
-						remotes = p.getRemotes("HTTPS", peek.Hostname)
+						remotes = p.getRemotes("HTTPS", peek.Hostname, ip)
 						log.Println("peekhost:", hostname)
 					case peektype.UNKNOWN:
-						remotes = p.getRemotes("TCP", peek.Hostname)
+						remotes = p.getRemotes("TCP", peek.Hostname, ip)
 					}
 
 					if len(remotes) == 0 {

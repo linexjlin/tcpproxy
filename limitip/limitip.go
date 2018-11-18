@@ -4,7 +4,7 @@ import (
 	"time"
 )
 
-func NewConn(max int) *CONN {
+func newConn(max int) *CONN {
 	var conn CONN
 	conn.Init(max)
 	return &conn
@@ -21,6 +21,13 @@ func (c *CONN) Init(max int) {
 	c.max = max
 
 }
+
+func (c *CONN) ChangeMax(max int) {
+	if c.max != max {
+		c.max = max
+	}
+}
+
 func (c *CONN) addIP(ip string) {
 	c.dat[ip] = time.Now()
 }
@@ -65,13 +72,14 @@ func (l *LIMIT) Init() {
 
 }
 
-func (l *LIMIT) Check(u, ip string) bool {
+func (l *LIMIT) Check(u, ip string, maxIP int) bool {
 	if c, ok := l.dat[u]; !ok {
-		var con = NewConn(1)
+		var con = newConn(maxIP)
 		con.CheckAndAdd(ip)
 		l.dat[u] = (*con)
 		return true
 	} else {
+		c.ChangeMax(maxIP)
 		return c.CheckAndAdd(ip)
 	}
 }
