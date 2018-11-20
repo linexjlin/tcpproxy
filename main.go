@@ -25,7 +25,7 @@ func main() {
 	}
 	P = tp.NewProxy(*sendTraf, *sendBytes, *sendIP, *addBytesUrl, *name)
 
-	if config, err := getConfig(*url, *name); err != nil {
+	if config, err := getConfig(*url, *name, ""); err != nil {
 		log.Fatal(err)
 	} else {
 		r := config2route(&config)

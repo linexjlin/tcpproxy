@@ -1,9 +1,8 @@
 package main
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -47,9 +46,10 @@ type Config struct {
 	SSH         ConfigServiceGroup  `json:",omitempty"`
 	Unknown     ConfigServiceGroup  `json:",omitempty"`
 	Hosts       map[string]HostInfo `json:",omitempty"`
+	Hash        string
 }
 
-func getConfig(url, server string) (Config, error) {
+func getConfig(url, server, hash string) (Config, error) {
 	var config Config
 
 	if req, err := http.NewRequest("GET", url, nil); err != nil {
@@ -58,16 +58,23 @@ func getConfig(url, server string) (Config, error) {
 	} else {
 		q := req.URL.Query()
 		q.Add("server", server)
+		q.Add("hash", hash)
 		req.URL.RawQuery = q.Encode()
 		client := http.Client{}
 		if rsp, err := client.Do(req); err != nil {
 			log.Println(err)
 			return config, err
 		} else {
+			if rsp.StatusCode != 200 {
+				return config, errors.New(rsp.Status)
+			}
 			if err = json.NewDecoder(rsp.Body).Decode(&config); err != nil {
 				log.Println(err)
 				return config, err
 			} else {
+				if len(config.Listen.Services) == 0 {
+					return config, errors.New("No Listen found!")
+				}
 				log.Println("Load config success!")
 			}
 			rsp.Body.Close()
@@ -165,16 +172,11 @@ func config2route(c *Config) *tp.Route {
 
 func autoUpdateConfig(url, server string) {
 	var hash string
-	h := sha256.New()
 	for {
-		if config, err := getConfig(url, server); err != nil {
+		if config, err := getConfig(url, server, hash); err != nil {
 			log.Println(err)
 		} else {
-			dat, _ := json.Marshal(config)
-			h.Write(dat)
-			hashed := h.Sum(nil)
-			hashNew := hex.EncodeToString(hashed)
-			h.Reset()
+			hashNew := config.Hash
 			log.Println("Config Hash:", hashNew)
 			if hashNew != hash {
 				r := config2route(&config)
