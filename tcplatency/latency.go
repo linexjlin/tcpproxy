@@ -3,7 +3,6 @@ package tcplatency
 import (
 	"log"
 	"net"
-	"strings"
 	"time"
 )
 
@@ -25,25 +24,39 @@ func NewLatency() *Latency {
 
 func (l *Latency) Order(hosts []string) {
 	for _, addr := range hosts {
-		host := strings.Split(addr, ":")[0]
-		if _, ok := l.host[host]; !ok {
+		if t, ok := l.host[addr]; !ok {
 			latency := addrLatency(addr)
 			log.Println(addr, latency)
-			l.host[host] = latency
+			l.host[addr] = latency
 		} else {
-			log.Println(host, "pass", l.host[host])
+			log.Println(addr, "pass", t)
 		}
 	}
 
 	for i := 0; i < len(hosts)-1; i++ {
 		var min = i
 		for j := i; j < len(hosts); j++ {
-			if l.host[strings.Split(hosts[j], ":")[0]] < l.host[strings.Split(hosts[min], ":")[0]] {
+			if l.host[hosts[j]] < l.host[hosts[min]] {
 				min = j
 			}
 		}
 		//log.Println("swap")
 		hosts[i], hosts[min] = hosts[min], hosts[i]
+	}
+}
+
+func (l *Latency) updateLatency() {
+	for addr, _ := range l.host {
+		latency := addrLatency(addr)
+		log.Println(addr, latency)
+		l.host[addr] = latency
+	}
+}
+
+func (l *Latency) AutoUpdateLatency() {
+	for {
+		l.updateLatency()
+		time.Sleep(time.Minute * 15)
 	}
 }
 
@@ -71,29 +84,3 @@ func dialLatency(addr string) (dur time.Duration, err error) {
 		return time.Now().Sub(begin), nil
 	}
 }
-
-/*
-func OrderHostByBackup(hosts []string) {
-	if len(hosts) < 2 {
-		return
-	} else {
-		firstLatency := Latency(hosts[0])
-		log.Println("Latency of", hosts[0], firstLatency)
-		for i, host := range hosts {
-			if i == 0 {
-				continue
-			} else {
-				l := Latency(host)
-				log.Println("Latency of", host, l)
-				if time.Duration(firstLatency.Nanoseconds()-l.Nanoseconds()) > time.Millisecond*120 {
-					log.Println("switch", hosts[0], host)
-					firstLatency = l
-					th := hosts[0]
-					hosts[0] = host
-					hosts[i] = th
-				}
-			}
-		}
-	}
-}
-*/
