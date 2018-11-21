@@ -38,7 +38,8 @@ type Backend struct {
 }
 
 type Route struct {
-	rules map[Rule]Backend
+	rules   map[Rule]Backend
+	latency *tl.Latency
 }
 
 func (r *Route) Add(rtype int, name string, maxIP int, policy string, services []string) {
@@ -57,7 +58,7 @@ func (r *Route) Add(rtype int, name string, maxIP int, policy string, services [
 func (r *Route) OptimizeBackend() {
 	for rule, backends := range r.rules {
 		if rule.rtype != LISTEN {
-			tl.OrderHostByBackup(backends.services)
+			r.latency.Order(backends.services)
 		}
 	}
 }
@@ -71,6 +72,7 @@ func (r *Route) PrintRules() {
 func NewRoute() *Route {
 	var r Route
 	r.rules = make(map[Rule]Backend)
+	r.latency = tl.NewLatency()
 	return &r
 }
 
