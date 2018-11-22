@@ -172,6 +172,8 @@ func config2route(c *Config) *tp.Route {
 
 func autoUpdateConfig(url, server string) {
 	var hash string
+	var r *tp.Route
+	var lastUpdate time.Time
 	for {
 		if config, err := getConfig(url, server, hash); err != nil {
 			log.Println(err)
@@ -179,11 +181,17 @@ func autoUpdateConfig(url, server string) {
 			hashNew := config.Hash
 			log.Println("Config Hash:", hashNew)
 			if hashNew != hash {
-				r := config2route(&config)
+				r = config2route(&config)
 				r.OptimizeBackend()
 				P.SetRoute(r)
 				hash = hashNew
+				lastUpdate = time.Now()
 			}
+		}
+		//Continually to optmize backend servers
+		if time.Now().Sub(lastUpdate) > time.Minute*15 {
+			r.OptimizeBackend()
+			lastUpdate = time.Now()
 		}
 		time.Sleep(time.Minute * 1)
 	}

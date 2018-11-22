@@ -37,6 +37,14 @@ type Backend struct {
 	policy   string
 }
 
+func NewRoute() *Route {
+	var r Route
+	r.rules = make(map[Rule]Backend)
+	r.latency = tl.NewLatency()
+	go r.latency.AutoUpdateLatency()
+	return &r
+}
+
 type Route struct {
 	rules   map[Rule]Backend
 	latency *tl.Latency
@@ -50,15 +58,19 @@ func (r *Route) Add(rtype int, name string, maxIP int, policy string, services [
 	var backend Backend
 	backend.maxIP = maxIP
 	backend.services = services
+	backend.policy = policy
 	if _, ok := r.rules[rule]; !ok {
 		r.rules[rule] = backend
 	}
 }
 
 func (r *Route) OptimizeBackend() {
+	log.Println("Optimize backend start")
 	for rule, backends := range r.rules {
-		if rule.rtype != LISTEN {
+		if rule.rtype != LISTEN && backends.policy == "latency" {
+			log.Println("order", backends.services, "by", backends.policy)
 			r.latency.Order(backends.services)
+			log.Println("after order", backends.services)
 		}
 	}
 }
@@ -67,13 +79,6 @@ func (r *Route) PrintRules() {
 	for k, v := range r.rules {
 		log.Println(k, v)
 	}
-}
-
-func NewRoute() *Route {
-	var r Route
-	r.rules = make(map[Rule]Backend)
-	r.latency = tl.NewLatency()
-	return &r
 }
 
 type Taf struct {
@@ -105,7 +110,7 @@ func NewProxy(sendTraf, sendByes, sendIP bool, url, name string) *Proxy {
 
 func (p *Proxy) SetRoute(route *Route) {
 	p.route = route
-	p.route.PrintRules()
+	//p.route.PrintRules()
 	p.checkListenAndProxy()
 }
 

@@ -54,9 +54,10 @@ func (l *Latency) updateLatency() {
 }
 
 func (l *Latency) AutoUpdateLatency() {
+	log.Println("AutoUpdateLatency start")
 	for {
-		l.updateLatency()
 		time.Sleep(time.Minute * 15)
+		l.updateLatency()
 	}
 }
 

@@ -30,7 +30,7 @@ func main() {
 	} else {
 		r := config2route(&config)
 
-		log.Println("get route", r)
+		//log.Println("get route", r)
 		P.SetRoute(r)
 		P.Start()
 		if (*url) != "" {
