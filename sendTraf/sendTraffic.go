@@ -2,8 +2,9 @@ package sendTraf
 
 import (
 	"fmt"
-	"log"
 	"net/http"
+
+	"github.com/linexjlin/simple-log"
 )
 
 func SendTraf(user, userIP, url, server string, in, out uint64) {
@@ -11,7 +12,7 @@ func SendTraf(user, userIP, url, server string, in, out uint64) {
 		return
 	}
 	if req, err := http.NewRequest("GET", url, nil); err != nil {
-		log.Println(err)
+		log.Warning(err)
 		return
 	} else {
 		q := req.URL.Query()
@@ -23,7 +24,7 @@ func SendTraf(user, userIP, url, server string, in, out uint64) {
 		req.URL.RawQuery = q.Encode()
 		client := http.Client{}
 		if rsp, err := client.Do(req); err != nil {
-			log.Println(err)
+			log.Warning(err)
 		} else {
 			rsp.Body.Close()
 		}

@@ -1,9 +1,10 @@
 package tcplatency
 
 import (
-	"log"
 	"net"
 	"time"
+
+	"github.com/linexjlin/simple-log"
 )
 
 const (
@@ -40,7 +41,6 @@ func (l *Latency) Order(hosts []string) {
 				min = j
 			}
 		}
-		//log.Println("swap")
 		hosts[i], hosts[min] = hosts[min], hosts[i]
 	}
 }
@@ -68,7 +68,6 @@ func addrLatency(addr string) (latency time.Duration) {
 		if d, e := dialLatency(addr); e != nil {
 			pass = pass.Add(DTimeOut)
 		} else {
-			//log.Println("latency to", addr, d)
 			pass = pass.Add(d)
 		}
 		time.Sleep(testInterval)

@@ -2,13 +2,13 @@ package tcpproxy
 
 import (
 	"io"
-	"log"
 	"net"
 	"strings"
 	"time"
 
 	humanize "github.com/dustin/go-humanize"
 	"github.com/linexjlin/peektype"
+	"github.com/linexjlin/simple-log"
 	limit "github.com/linexjlin/tcpproxy/limitip"
 	"github.com/linexjlin/tcpproxy/sendTraf"
 	tl "github.com/linexjlin/tcpproxy/tcplatency"
@@ -65,7 +65,7 @@ func (r *Route) Add(rtype int, name string, maxIP int, policy string, services [
 }
 
 func (r *Route) OptimizeBackend() {
-	log.Println("Optimize backend start")
+	log.Info("Optimize backend start")
 	for rule, backends := range r.rules {
 		if rule.rtype != LISTEN && backends.policy == "latency" {
 			log.Println("order", backends.services, "by", backends.policy)
@@ -130,7 +130,7 @@ func (p *Proxy) getRemotes(rType, host, ip string) []string {
 	switch rType {
 	case "HTTP":
 		if b, ok := p.route.rules[Rule{UHTTP, host}]; ok {
-			if LIM.Check(host, ip, b.maxIP) || b.maxIP < 1 {
+			if LIM.Check(host, ip, b.maxIP) {
 				if len(b.services) > 0 {
 					log.Println("User HTTP")
 					return b.services
@@ -138,13 +138,16 @@ func (p *Proxy) getRemotes(rType, host, ip string) []string {
 					log.Println("System HTTP Backends")
 					return p.route.rules[Rule{NHTTP, ""}].services
 				}
+			} else {
+				log.Warning("Max IP reached", host, ip, b.maxIP)
 			}
+
 		}
 		log.Println("Unknown HTTP Backends", host)
 		return p.route.rules[Rule{FHTTP, ""}].services
 	case "HTTPS":
 		if b, ok := p.route.rules[Rule{UHTTPS, host}]; ok {
-			if LIM.Check(host, ip, b.maxIP) || b.maxIP < 1 {
+			if LIM.Check(host, ip, b.maxIP) {
 				if len(b.services) > 0 {
 					log.Println("User HTTPS")
 					return b.services
@@ -152,6 +155,8 @@ func (p *Proxy) getRemotes(rType, host, ip string) []string {
 					log.Println("System HTTPS Backends")
 					return p.route.rules[Rule{NHTTPS, ""}].services
 				}
+			} else {
+				log.Warning("Max IP reached", host, ip, b.maxIP)
 			}
 		}
 		log.Println("Unknown HTTPS Backends", host)
@@ -159,12 +164,15 @@ func (p *Proxy) getRemotes(rType, host, ip string) []string {
 	case "SSH":
 		host = "SSH"
 		if b, ok := p.route.rules[Rule{SSH, ""}]; ok {
-			if LIM.Check(host, ip, b.maxIP) || b.maxIP < 1 {
+			if LIM.Check(host, ip, b.maxIP) {
 				if len(b.services) > 0 {
 					log.Println("UserRoute")
 					return b.services
 				}
+			} else {
+				log.Warning("Max IP reached", host, ip, b.maxIP)
 			}
+
 		}
 
 		host = "UNKNOWN"
@@ -184,10 +192,10 @@ func (p *Proxy) forward(conn net.Conn, remotes []string, dat []byte) (int64, str
 			continue
 		} else {
 			if i > 0 {
-				log.Println("change first remote to:", remote)
-				remotes[0] = remote
+				log.Warning("swap first remote:", remotes[0], "with", remotes[i])
+				remotes[0], remotes[i] = remotes[i], remotes[0]
 			}
-			//log.Println(conn.RemoteAddr(), "->", client.RemoteAddr())
+			log.Println(conn.RemoteAddr(), "->", client.RemoteAddr())
 			var sync = make(chan int64, 2)
 
 			go func() {
@@ -202,15 +210,17 @@ func (p *Proxy) forward(conn net.Conn, remotes []string, dat []byte) (int64, str
 			}()
 
 			bytes := <-sync
+			log.Debug("Get first bytes", bytes)
 			select {
 			case bytes = <-sync:
 			case <-time.After(time.Second * 10):
 			}
+			log.Debug("Get second bytes", bytes)
 			conn.Close()
 			client.Close()
 			return bytes, remote
 		}
-		log.Println("All backend servers are die!")
+		log.Warning("All backend servers are die!", remotes)
 		conn.Close()
 	}
 	return 0, ""
@@ -227,10 +237,10 @@ var LIM = limit.NewLIMIT()
 func (p *Proxy) listenAndProxy(listenAddr string) {
 	listener, err := net.Listen("tcp", listenAddr)
 	if err != nil {
-		log.Println("Failed to setup listener:", err)
+		log.Error("Failed to setup listener:", err)
 		return
 	} else {
-		log.Println("Listen on", listenAddr)
+		log.Info("Listen on", listenAddr)
 		p.listeners[listenAddr] = listener
 	}
 
@@ -238,7 +248,7 @@ func (p *Proxy) listenAndProxy(listenAddr string) {
 		if conn, err := listener.Accept(); err != nil {
 			log.Println(err)
 		} else {
-			//log.Println("accept connectino from:", conn.RemoteAddr())
+			log.Debug("Connect:", conn.RemoteAddr(), "-->", conn.LocalAddr())
 			ip := strings.Split(conn.RemoteAddr().String(), ":")[0]
 			go func() {
 				var buf = make([]byte, 512)
@@ -252,11 +262,6 @@ func (p *Proxy) listenAndProxy(listenAddr string) {
 
 					var remotes []string
 					var hostname = peek.Hostname
-					/*if hostname != "" && !LIM.Check(hostname, ip) {
-						log.Println("Max IP reach:", hostname, ip)
-						conn.Close()
-						return
-					}*/
 					switch t {
 					case peektype.SSH:
 						remotes = p.getRemotes("SSH", "", ip)
@@ -271,7 +276,7 @@ func (p *Proxy) listenAndProxy(listenAddr string) {
 					}
 
 					if len(remotes) == 0 {
-						log.Println("Unable to find remote hosts")
+						log.Warning("Unable to find remote hosts", hostname)
 						conn.Close()
 					} else {
 						n, remote := p.forward(conn, remotes, buf[:n])
@@ -280,7 +285,7 @@ func (p *Proxy) listenAndProxy(listenAddr string) {
 							p.ut[user] = &Taf{}
 							p.ut[user].ip = ip
 						}
-						log.Println(hostname, "(", ip, ")", "->", remote, " traffic:", n)
+						log.Info(hostname, "(", ip, ")", "->", remote, " traffic:", n)
 						p.ut[user].in += uint64(n)
 						p.ut[user].out += uint64(n)
 					}

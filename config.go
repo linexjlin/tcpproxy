@@ -4,10 +4,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
 	"net/http"
 	"time"
 
+	"github.com/linexjlin/simple-log"
 	tp "github.com/linexjlin/tcpproxy/tcpproxy"
 )
 

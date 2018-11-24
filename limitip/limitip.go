@@ -73,6 +73,9 @@ func (l *LIMIT) Init() {
 }
 
 func (l *LIMIT) Check(u, ip string, maxIP int) bool {
+	if maxIP == 0 {
+		return true
+	}
 	if c, ok := l.dat[u]; !ok {
 		var con = newConn(maxIP)
 		con.CheckAndAdd(ip)
