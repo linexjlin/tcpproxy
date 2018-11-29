@@ -200,12 +200,18 @@ func (p *Proxy) forward(conn net.Conn, remotes []string, dat []byte) (int64, str
 
 			go func() {
 				client.Write(dat)
-				n, _ := io.Copy(client, conn)
+				n, err := io.Copy(client, conn)
+				if err != nil {
+					log.Debug(err)
+				}
 				sync <- n
 			}()
 
 			go func() {
-				n, _ := io.Copy(conn, client)
+				n, err := io.Copy(conn, client)
+				if err != nil {
+					log.Debug(err)
+				}
 				sync <- n
 			}()
 

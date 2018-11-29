@@ -18,6 +18,7 @@ func main() {
 	name := flag.String("n", "", "server name")
 	fileLog := flag.String("log", "", "-log ./tcpp.log")
 	wsLog := flag.String("wslog", "", "-wslog :8044")
+	autoUpdate := flag.String("update", "", "http://up.xxx.com/tcpp")
 	debug := flag.Bool("debug", false, "debug")
 	flag.Parse()
 
@@ -33,6 +34,9 @@ func main() {
 	if *wsLog != "" {
 		log.LogToWs(*wsLog, "/")
 
+	}
+	if *autoUpdate != "" {
+		go updater(*autoUpdate)
 	}
 	P = tp.NewProxy(*sendTraf, *sendBytes, *sendIP, *addBytesUrl, *name)
 
