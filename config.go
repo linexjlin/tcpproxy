@@ -149,7 +149,13 @@ func config2route(c *Config) *tp.Route {
 			for _, s := range h.HTTP.HTTP.Services {
 				ss = append(ss, fmt.Sprintf("%s:%d", s.IP, s.Port))
 			}
-			r.Add(tp.UHTTP, name, int(h.HTTP.HTTP.MaxIP), h.HTTP.HTTP.Policy, ss)
+			var maxIP int
+			if h.MaxIP > h.HTTP.HTTP.MaxIP {
+				maxIP = int(h.MaxIP)
+			} else {
+				maxIP = int(h.HTTP.HTTP.MaxIP)
+			}
+			r.Add(tp.UHTTP, name, maxIP, h.HTTP.HTTP.Policy, ss)
 		} else {
 			var ss []string
 			r.Add(tp.UHTTP, name, int(h.MaxIP), h.Policy, ss)
@@ -160,7 +166,13 @@ func config2route(c *Config) *tp.Route {
 			for _, s := range h.HTTP.HTTPS.Services {
 				ss = append(ss, fmt.Sprintf("%s:%d", s.IP, s.Port))
 			}
-			r.Add(tp.UHTTPS, name, int(h.HTTP.HTTPS.MaxIP), h.HTTP.HTTPS.Policy, ss)
+			var maxIP int
+			if h.MaxIP > h.HTTP.HTTPS.MaxIP {
+				maxIP = int(h.MaxIP)
+			} else {
+				maxIP = int(h.HTTP.HTTPS.MaxIP)
+			}
+			r.Add(tp.UHTTPS, name, maxIP, h.HTTP.HTTPS.Policy, ss)
 		} else {
 			var ss []string
 			r.Add(tp.UHTTPS, name, int(h.MaxIP), h.Policy, ss)

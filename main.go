@@ -25,9 +25,8 @@ func main() {
 	if *name == "" {
 		log.Fatal("server name can't not be empty!")
 	}
-	if *debug {
-		log.DebugEanble(true)
-	}
+	log.DebugEanble(*debug)
+
 	if *fileLog != "" {
 		log.LogToFile(*fileLog)
 	}
