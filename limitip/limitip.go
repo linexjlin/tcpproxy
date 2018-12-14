@@ -1,6 +1,7 @@
 package limit
 
 import (
+	"sync"
 	"time"
 )
 
@@ -11,6 +12,8 @@ func newConn(max int) *CONN {
 
 }
 
+var mux sync.Mutex
+
 type CONN struct {
 	dat      map[string]time.Time
 	cnt, max int
@@ -18,8 +21,6 @@ type CONN struct {
 
 func (c *CONN) Init(max int) {
 	c.dat = make(map[string]time.Time)
-	c.max = max
-
 }
 
 func (c *CONN) ChangeMax(max int) {
@@ -34,7 +35,9 @@ func (c *CONN) addIP(ip string) {
 
 func (c *CONN) CheckAndAdd(ip string) bool {
 	if _, ok := c.dat[ip]; ok {
+		mux.Lock()
 		c.dat[ip] = time.Now()
+		mux.Unlock()
 		return true
 	} else {
 		if len(c.dat) < c.max {
