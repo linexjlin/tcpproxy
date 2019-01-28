@@ -24,6 +24,9 @@ const (
 	FHTTPS
 	SSH
 	LISTEN
+	PORT
+	LIP
+	IPPORT
 	UNKNOWN
 )
 
@@ -36,6 +39,7 @@ type Backend struct {
 	services []string
 	maxIP    int
 	policy   string
+	btype    string
 }
 
 func NewRoute() *Route {
@@ -51,7 +55,7 @@ type Route struct {
 	latency *tl.Latency
 }
 
-func (r *Route) Add(rtype int, name string, maxIP int, policy string, services []string) {
+func (r *Route) Add(rtype int, name string, maxIP int, policy, btype string, services []string) {
 	var rule Rule
 	rule.name = name
 	rule.rtype = rtype
@@ -60,6 +64,7 @@ func (r *Route) Add(rtype int, name string, maxIP int, policy string, services [
 	backend.maxIP = maxIP
 	backend.services = services
 	backend.policy = policy
+	backend.btype = btype
 	if _, ok := r.rules[rule]; !ok {
 		r.rules[rule] = backend
 	}
@@ -127,61 +132,106 @@ func (p *Proxy) checkListenAndProxy() {
 	}
 }
 
-func (p *Proxy) getRemotes(rType, host, ip string) []string {
+func (p *Proxy) getRemotesByAddr(ip string, laddr, raddr net.Addr) (int, []string) {
+	var t int
+	//Try Port; eg: 50000
+	host := strings.Split(laddr.String(), ":")[1]
+	t = PORT
+	b, ok := p.route.rules[Rule{PORT, host}]
+
+	if !ok {
+		//try local ip; eg: 1.2.3.4
+		host = strings.Split(laddr.String(), ":")[0]
+		t = LIP
+		b, ok = p.route.rules[Rule{LIP, host}]
+	}
+	if !ok {
+		//try local IP + PORT match 1.2.4.3:50000
+		host = laddr.String()
+		t = IPPORT
+		b, ok = p.route.rules[Rule{IPPORT, host}]
+	}
+	if !ok {
+		return UNKNOWN, []string{}
+	}
+
+	if LIM.Check(host, ip, b.maxIP) {
+		if len(b.services) > 0 {
+			log.Println("UserRoute")
+			return t, b.services
+		}
+	} else {
+		log.Warning("Max IP reached", host, ip, b.maxIP)
+	}
+	return UNKNOWN, []string{}
+}
+
+func (p *Proxy) getRemotes(rType, host, ip string, laddr, raddr net.Addr) (int, []string) {
 	switch rType {
 	case "HTTP":
 		if b, ok := p.route.rules[Rule{UHTTP, host}]; ok {
 			if LIM.Check(host, ip, b.maxIP) {
 				if len(b.services) > 0 {
 					log.Println("User HTTP")
-					return b.services
+					return UHTTP, b.services
 				} else {
 					log.Println("System HTTP Backends")
-					return p.route.rules[Rule{NHTTP, ""}].services
+					return NHTTP, p.route.rules[Rule{NHTTP, ""}].services
 				}
 			} else {
 				log.Warning("Max IP reached", host, ip, b.maxIP)
 			}
 
 		}
+		if t, b := p.getRemotesByAddr(ip, laddr, raddr); len(b) > 0 {
+			return t, b
+		}
 		log.Println("Unknown HTTP Backends", host)
-		return p.route.rules[Rule{FHTTP, ""}].services
+		return FHTTP, p.route.rules[Rule{FHTTP, ""}].services
 	case "HTTPS":
 		if b, ok := p.route.rules[Rule{UHTTPS, host}]; ok {
 			if LIM.Check(host, ip, b.maxIP) {
 				if len(b.services) > 0 {
 					log.Println("User HTTPS")
-					return b.services
+					return UHTTPS, b.services
 				} else {
 					log.Println("System HTTPS Backends")
-					return p.route.rules[Rule{NHTTPS, ""}].services
+					return NHTTPS, p.route.rules[Rule{NHTTPS, ""}].services
 				}
 			} else {
 				log.Warning("Max IP reached", host, ip, b.maxIP)
 			}
 		}
+		if t, b := p.getRemotesByAddr(ip, laddr, raddr); len(b) > 0 {
+			return t, b
+		}
 		log.Println("Unknown HTTPS Backends", host)
-		return p.route.rules[Rule{FHTTPS, ""}].services
+		return FHTTPS, p.route.rules[Rule{FHTTPS, ""}].services
 	case "SSH":
 		host = "SSH"
 		if b, ok := p.route.rules[Rule{SSH, ""}]; ok {
 			if LIM.Check(host, ip, b.maxIP) {
 				if len(b.services) > 0 {
 					log.Println("UserRoute")
-					return b.services
+					return SSH, b.services
 				}
 			} else {
 				log.Warning("Max IP reached", host, ip, b.maxIP)
 			}
 
 		}
-
+		if t, b := p.getRemotesByAddr(ip, laddr, raddr); len(b) > 0 {
+			return t, b
+		}
 		host = "UNKNOWN"
-		return p.route.rules[Rule{UNKNOWN, ""}].services
+		return UNKNOWN, p.route.rules[Rule{UNKNOWN, ""}].services
+	case "TCP":
+		return p.getRemotesByAddr(ip, laddr, raddr)
 	default:
 		host = "UNKNOWN"
-		return p.route.rules[Rule{UNKNOWN, ""}].services
+		return UNKNOWN, p.route.rules[Rule{UNKNOWN, ""}].services
 	}
+	return UNKNOWN, []string{}
 }
 
 //io.CopyBuffer
@@ -249,7 +299,7 @@ func trans(p1, p2 io.ReadWriteCloser) (int64, int64) {
 	return toP1Bytes, toP2Bytes
 }
 
-func (p *Proxy) forward(inConn io.ReadWriteCloser, raddr net.Addr) {
+func (p *Proxy) forwarder(inConn io.ReadWriteCloser, laddr, raddr net.Addr) {
 	ip := strings.Split(raddr.String(), ":")[0]
 	var buf = make([]byte, 512)
 	if n, e := inConn.Read(buf); e != nil {
@@ -262,17 +312,20 @@ func (p *Proxy) forward(inConn io.ReadWriteCloser, raddr net.Addr) {
 
 		var remotes []string
 		var hostname = peek.Hostname
+		var rt int
 		switch t {
 		case peektype.SSH:
-			remotes = p.getRemotes("SSH", "", ip)
+			rt, remotes = p.getRemotes("SSH", "", ip, laddr, raddr)
+			log.Infof("SSH: %s\n", raddr.String())
 		case peektype.HTTP:
-			remotes = p.getRemotes("HTTP", peek.Hostname, ip)
-			log.Println("peekhost:", hostname)
+			rt, remotes = p.getRemotes("HTTP", peek.Hostname, ip, laddr, raddr)
+			log.Infof("http://%s %s\n", hostname, raddr.String())
 		case peektype.HTTPS:
-			remotes = p.getRemotes("HTTPS", peek.Hostname, ip)
-			log.Println("peekhost:", hostname)
+			rt, remotes = p.getRemotes("HTTPS", peek.Hostname, ip, laddr, raddr)
+			log.Infof("https://%s %s\n", hostname, raddr.String())
 		case peektype.UNKNOWN:
-			remotes = p.getRemotes("TCP", peek.Hostname, ip)
+			rt, remotes = p.getRemotes("TCP", peek.Hostname, ip, laddr, raddr)
+			log.Infof("UNKNOWN: %s\n", raddr.String())
 		}
 
 		if len(remotes) == 0 {
@@ -294,7 +347,17 @@ func (p *Proxy) forward(inConn io.ReadWriteCloser, raddr net.Addr) {
 					nn, _ := bConn.Write(buf)
 					out, in := trans3(inConn, bConn)
 					in += int64(nn)
-					user := hostname
+					var user string
+					switch rt {
+					case IPPORT:
+						user = laddr.String()
+					case LIP:
+						user = strings.Split(laddr.String(), ":")[1]
+					case PORT:
+						user = strings.Split(laddr.String(), ":")[1]
+					default:
+						user = hostname
+					}
 					if tf, ok := p.ut[user]; !ok {
 						p.ut[user] = &Taf{}
 						p.ut[user].ip = ip
@@ -302,7 +365,7 @@ func (p *Proxy) forward(inConn io.ReadWriteCloser, raddr net.Addr) {
 						tf.in += uint64(in)
 						tf.out += uint64(out)
 					}
-					log.Infof("%s(%s->%s) in:%d out:%d\n", hostname, raddr.String(), remote, in, out)
+					log.Infof("%s [%s->%s->%s] [I:%d O:%d]\n", user, raddr.String(), laddr.String(), remote, in, out)
 					return
 				}
 				log.Warning("All backend servers are die!", remotes)
@@ -321,7 +384,7 @@ func (p *Proxy) Start() {
 var LIM = limit.NewLIMIT()
 
 func (p *Proxy) listenAndProxy(listenAddr string) {
-	go kcpp.ListenKCP(listenAddr, p.forward)
+	go kcpp.ListenKCP(listenAddr, p.forwarder)
 	listener, err := net.Listen("tcp", listenAddr)
 	if err != nil {
 		log.Error("Failed to setup listener:", err)
@@ -335,7 +398,7 @@ func (p *Proxy) listenAndProxy(listenAddr string) {
 		if conn, err := listener.Accept(); err != nil {
 			log.Println(err)
 		} else {
-			go p.forward(conn, conn.RemoteAddr())
+			go p.forwarder(conn, conn.LocalAddr(), conn.RemoteAddr())
 		}
 	}
 }

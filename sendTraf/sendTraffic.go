@@ -3,11 +3,13 @@ package sendTraf
 import (
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/linexjlin/simple-log"
 )
 
 func SendTraf(user, userIP, url, server string, in, out uint64) {
+	http.DefaultClient.Timeout = time.Minute * 3
 	if url == "" {
 		return
 	}

@@ -40,8 +40,8 @@ func trans(p1, p2 io.ReadWriteCloser) (int64, int64) {
 	return toP1Bytes, toP2Bytes
 }
 
-func forward(conn net.Conn) {
-	if backend, err := net.DialTimeout("tcp", "hk008.linkown.com:80", time.Millisecond*400); err != nil {
+func forwarder(conn io.ReadWriteCloser, laddr, raddr net.Addr) {
+	if backend, err := net.DialTimeout("tcp", "127.0.0.1:80", time.Millisecond*400); err != nil {
 		log.Println(err)
 	} else {
 		trans(conn, backend)
@@ -49,5 +49,5 @@ func forward(conn net.Conn) {
 }
 
 func TestListen(t *testing.T) {
-	ListenKCP(":9000", forward)
+	ListenKCP(":9000", forwarder)
 }

@@ -36,7 +36,9 @@ type HttpHttps struct {
 type HostInfo struct {
 	MaxIP  uint
 	Policy string
+	Type   string
 	HTTP   HttpHttps
+	Group  ConfigServiceGroup `json:",omitempty"`
 }
 
 type Config struct {
@@ -51,6 +53,7 @@ type Config struct {
 
 func getConfig(url, server, hash string) (Config, error) {
 	var config Config
+	http.DefaultClient.Timeout = time.Minute * 3
 
 	if req, err := http.NewRequest("GET", url, nil); err != nil {
 		log.Println(err)
@@ -92,7 +95,7 @@ func config2route(c *Config) *tp.Route {
 		for _, s := range c.Listen.Services {
 			ss = append(ss, fmt.Sprintf("%s:%d", s.IP, s.Port))
 		}
-		r.Add(tp.LISTEN, "LISTEN", 0, "", ss)
+		r.Add(tp.LISTEN, "LISTEN", 0, "", "", ss)
 	}
 
 	if c.HTTP.HTTP.ServiceGroup != nil {
@@ -100,7 +103,7 @@ func config2route(c *Config) *tp.Route {
 		for _, s := range c.HTTP.HTTP.Services {
 			ss = append(ss, fmt.Sprintf("%s:%d", s.IP, s.Port))
 		}
-		r.Add(tp.NHTTP, "", int(c.HTTP.HTTP.MaxIP), c.HTTP.HTTP.Policy, ss)
+		r.Add(tp.NHTTP, "", int(c.HTTP.HTTP.MaxIP), c.HTTP.HTTP.Policy, "", ss)
 	}
 
 	if c.HTTP.HTTPS.ServiceGroup != nil {
@@ -108,7 +111,7 @@ func config2route(c *Config) *tp.Route {
 		for _, s := range c.HTTP.HTTPS.Services {
 			ss = append(ss, fmt.Sprintf("%s:%d", s.IP, s.Port))
 		}
-		r.Add(tp.NHTTPS, "", int(c.HTTP.HTTPS.MaxIP), c.HTTP.HTTPS.Policy, ss)
+		r.Add(tp.NHTTPS, "", int(c.HTTP.HTTPS.MaxIP), c.HTTP.HTTPS.Policy, "", ss)
 	}
 
 	if c.UnknownHTTP.HTTP.ServiceGroup != nil {
@@ -116,7 +119,7 @@ func config2route(c *Config) *tp.Route {
 		for _, s := range c.UnknownHTTP.HTTP.Services {
 			ss = append(ss, fmt.Sprintf("%s:%d", s.IP, s.Port))
 		}
-		r.Add(tp.FHTTP, "", int(c.UnknownHTTP.HTTP.MaxIP), c.UnknownHTTP.HTTP.Policy, ss)
+		r.Add(tp.FHTTP, "", int(c.UnknownHTTP.HTTP.MaxIP), c.UnknownHTTP.HTTP.Policy, "", ss)
 	}
 
 	if c.UnknownHTTP.HTTPS.ServiceGroup != nil {
@@ -124,7 +127,7 @@ func config2route(c *Config) *tp.Route {
 		for _, s := range c.UnknownHTTP.HTTPS.Services {
 			ss = append(ss, fmt.Sprintf("%s:%d", s.IP, s.Port))
 		}
-		r.Add(tp.FHTTPS, "", int(c.UnknownHTTP.HTTPS.MaxIP), c.UnknownHTTP.HTTPS.Policy, ss)
+		r.Add(tp.FHTTPS, "", int(c.UnknownHTTP.HTTPS.MaxIP), c.UnknownHTTP.HTTPS.Policy, "", ss)
 	}
 
 	if c.SSH.ServiceGroup != nil {
@@ -132,7 +135,7 @@ func config2route(c *Config) *tp.Route {
 		for _, s := range c.SSH.Services {
 			ss = append(ss, fmt.Sprintf("%s:%d", s.IP, s.Port))
 		}
-		r.Add(tp.SSH, "", 0, c.SSH.Policy, ss)
+		r.Add(tp.SSH, "", 0, c.SSH.Policy, "", ss)
 	}
 
 	if c.Unknown.ServiceGroup != nil {
@@ -140,7 +143,7 @@ func config2route(c *Config) *tp.Route {
 		for _, s := range c.Unknown.Services {
 			ss = append(ss, fmt.Sprintf("%s:%d", s.IP, s.Port))
 		}
-		r.Add(tp.UNKNOWN, "UNKNOWN", 0, c.Unknown.Policy, ss)
+		r.Add(tp.UNKNOWN, "UNKNOWN", 0, c.Unknown.Policy, "", ss)
 	}
 
 	for name, h := range c.Hosts {
@@ -155,10 +158,10 @@ func config2route(c *Config) *tp.Route {
 			} else {
 				maxIP = int(h.HTTP.HTTP.MaxIP)
 			}
-			r.Add(tp.UHTTP, name, maxIP, h.HTTP.HTTP.Policy, ss)
+			r.Add(tp.UHTTP, name, maxIP, h.HTTP.HTTP.Policy, h.Type, ss)
 		} else {
 			var ss []string
-			r.Add(tp.UHTTP, name, int(h.MaxIP), h.Policy, ss)
+			r.Add(tp.UHTTP, name, int(h.MaxIP), h.Policy, h.Type, ss)
 		}
 
 		if h.HTTP.HTTPS.ServiceGroup != nil {
@@ -172,10 +175,32 @@ func config2route(c *Config) *tp.Route {
 			} else {
 				maxIP = int(h.HTTP.HTTPS.MaxIP)
 			}
-			r.Add(tp.UHTTPS, name, maxIP, h.HTTP.HTTPS.Policy, ss)
+			r.Add(tp.UHTTPS, name, maxIP, h.HTTP.HTTPS.Policy, h.Type, ss)
 		} else {
 			var ss []string
-			r.Add(tp.UHTTPS, name, int(h.MaxIP), h.Policy, ss)
+			r.Add(tp.UHTTPS, name, int(h.MaxIP), h.Policy, h.Type, ss)
+		}
+		if h.Group.ServiceGroup != nil {
+			var ss []string
+			for _, s := range h.Group.Services {
+				ss = append(ss, fmt.Sprintf("%s:%d", s.IP, s.Port))
+			}
+			var maxIP int
+			if h.MaxIP > h.Group.MaxIP {
+				maxIP = int(h.MaxIP)
+			} else {
+				maxIP = int(h.Group.MaxIP)
+			}
+			switch h.Type {
+			case "port":
+				r.Add(tp.PORT, name, maxIP, h.Group.Policy, h.Type, ss)
+			case "lip":
+				r.Add(tp.LIP, name, maxIP, h.Group.Policy, h.Type, ss)
+			case "ipport":
+				r.Add(tp.IPPORT, name, maxIP, h.Group.Policy, h.Type, ss)
+			default:
+				r.Add(tp.UNKNOWN, name, maxIP, h.Group.Policy, h.Type, ss)
+			}
 		}
 	}
 

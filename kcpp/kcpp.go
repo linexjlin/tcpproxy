@@ -51,7 +51,7 @@ func newCompStream(conn net.Conn) *compStream {
 }
 
 // handle multiplex-ed connection
-func handleMux(conn io.ReadWriteCloser, config *Config, raddr net.Addr, forward func(io.ReadWriteCloser, net.Addr)) {
+func handleMux(conn io.ReadWriteCloser, config *Config, laddr, raddr net.Addr, forwarder func(io.ReadWriteCloser, net.Addr, net.Addr)) {
 	// stream multiplex
 	smuxConfig := smux.DefaultConfig()
 	smuxConfig.MaxReceiveBuffer = config.SockBuf
@@ -69,11 +69,8 @@ func handleMux(conn io.ReadWriteCloser, config *Config, raddr net.Addr, forward 
 			log.Warning(err)
 			return
 		} else {
-			if p1 != nil {
-				go forward(p1, raddr)
-			}
+			go forwarder(p1, laddr, raddr)
 		}
-		//go handleClient(p1, p2, config.Quiet)
 	}
 }
 
@@ -87,7 +84,7 @@ func init() {
 
 }
 
-func ListenKCP(listenAddr string, forward func(io.ReadWriteCloser, net.Addr)) {
+func ListenKCP(listenAddr string, forwarder func(io.ReadWriteCloser, net.Addr, net.Addr)) {
 	var config Config
 
 	//config.Listen = ":80"
@@ -203,9 +200,9 @@ func ListenKCP(listenAddr string, forward func(io.ReadWriteCloser, net.Addr)) {
 			conn.SetACKNoDelay(config.AckNodelay)
 
 			if config.NoComp {
-				go handleMux(conn, &config, conn.RemoteAddr(), forward)
+				go handleMux(conn, &config, conn.LocalAddr(), conn.RemoteAddr(), forwarder)
 			} else {
-				go handleMux(newCompStream(conn), &config, conn.RemoteAddr(), forward)
+				go handleMux(newCompStream(conn), &config, conn.LocalAddr(), conn.RemoteAddr(), forwarder)
 			}
 		} else {
 			log.Warning("%+v", err)
