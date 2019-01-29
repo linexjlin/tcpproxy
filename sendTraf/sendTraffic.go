@@ -9,7 +9,7 @@ import (
 )
 
 func SendTraf(user, userIP, url, server string, in, out uint64) {
-	http.DefaultClient.Timeout = time.Minute * 3
+	http.DefaultClient.Timeout = time.Minute * 2
 	if url == "" {
 		return
 	}
@@ -25,10 +25,10 @@ func SendTraf(user, userIP, url, server string, in, out uint64) {
 		q.Add("out", fmt.Sprint(out))
 		req.URL.RawQuery = q.Encode()
 		client := http.Client{}
-		if rsp, err := client.Do(req); err != nil {
+		rsp, err := client.Do(req)
+		defer rsp.Body.Close()
+		if err != nil {
 			log.Warning(err)
-		} else {
-			rsp.Body.Close()
 		}
 	}
 }
