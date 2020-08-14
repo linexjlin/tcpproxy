@@ -169,7 +169,7 @@ func (p *Proxy) getRemotesByAddr(ip string, laddr, raddr net.Addr) (int, []strin
 func (p *Proxy) getRemotes(rType, host, ip string, laddr, raddr net.Addr) (int, []string) {
 	switch rType {
 	case "HTTP":
-		b, ok := p.route.rules[Rule{UHTTPS, host}]
+		b, ok := p.route.rules[Rule{UHTTP, host}]
 		if ok {
 			if LIM.Check(host, ip, b.maxIP) {
 				if len(b.services) > 0 {
