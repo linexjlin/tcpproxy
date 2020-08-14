@@ -169,7 +169,8 @@ func (p *Proxy) getRemotesByAddr(ip string, laddr, raddr net.Addr) (int, []strin
 func (p *Proxy) getRemotes(rType, host, ip string, laddr, raddr net.Addr) (int, []string) {
 	switch rType {
 	case "HTTP":
-		if b, ok := p.route.rules[Rule{UHTTP, host}]; ok {
+		b, ok := p.route.rules[Rule{UHTTPS, host}]
+		if ok {
 			if LIM.Check(host, ip, b.maxIP) {
 				if len(b.services) > 0 {
 					log.Println("User HTTP")
@@ -181,7 +182,6 @@ func (p *Proxy) getRemotes(rType, host, ip string, laddr, raddr net.Addr) (int, 
 			} else {
 				log.Warning("Max IP reached", host, ip, b.maxIP)
 			}
-
 		}
 		if t, b := p.getRemotesByAddr(ip, laddr, raddr); len(b) > 0 {
 			return t, b
@@ -189,7 +189,8 @@ func (p *Proxy) getRemotes(rType, host, ip string, laddr, raddr net.Addr) (int, 
 		log.Println("Unknown HTTP Backends", host)
 		return FHTTP, p.route.rules[Rule{FHTTP, ""}].services
 	case "HTTPS":
-		if b, ok := p.route.rules[Rule{UHTTPS, host}]; ok {
+		b, ok := p.route.rules[Rule{UHTTPS, host}]
+		if ok {
 			if LIM.Check(host, ip, b.maxIP) {
 				if len(b.services) > 0 {
 					log.Println("User HTTPS")
@@ -398,6 +399,7 @@ func (p *Proxy) listenAndProxy(listenAddr string) {
 		if conn, err := listener.Accept(); err != nil {
 			log.Println(err)
 		} else {
+			conn.SetDeadline(time.Now().Add(time.Hour))
 			go p.forwarder(conn, conn.LocalAddr(), conn.RemoteAddr())
 		}
 	}

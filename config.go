@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/ioutil"
 	"net/http"
 	"time"
 
@@ -51,13 +52,18 @@ type Config struct {
 	Hash        string
 }
 
+const (
+	TMPConfig = "/tmp/.config.json"
+)
+
 func getConfig(url, server, hash string) (Config, error) {
 	var config Config
+	var err error
 	http.DefaultClient.Timeout = time.Minute * 3
 
 	if req, err := http.NewRequest("GET", url, nil); err != nil {
 		log.Println(err)
-		return config, err
+		return LoadConfigFromFile("/tmp/.config.json")
 	} else {
 		q := req.URL.Query()
 		q.Add("server", server)
@@ -68,23 +74,45 @@ func getConfig(url, server, hash string) (Config, error) {
 			log.Println(err)
 			return config, err
 		} else {
-			if rsp.StatusCode != 200 {
-				return config, errors.New(rsp.Status)
-			}
-			if err = json.NewDecoder(rsp.Body).Decode(&config); err != nil {
-				log.Println(err)
-				return config, err
-			} else {
-				if len(config.Listen.Services) == 0 {
-					return config, errors.New("No Listen found!")
+			if rsp.StatusCode == 200 {
+				if dat, err := ioutil.ReadAll(rsp.Body); err != nil {
+					log.Error(err)
+				} else {
+					if err = json.Unmarshal(dat, &config); err != nil {
+						log.Error(err)
+					} else {
+						if len(config.Listen.Services) == 0 {
+							return config, errors.New("No Listen found!")
+						} else {
+							ioutil.WriteFile(TMPConfig, dat, 0644)
+							log.Println("Load config success!")
+						}
+					}
 				}
-				log.Println("Load config success!")
+			} else {
+				log.Error(rsp.StatusCode)
+				log.Error(req.URL.Host, req.URL.RequestURI())
+				return config, errors.New("No Found!")
 			}
 			rsp.Body.Close()
 		}
 	}
 
-	return config, nil
+	return config, err
+}
+
+func LoadConfigFromFile(path string) (Config, error) {
+	var config Config
+	var err error
+	log.Notice("Load config from", TMPConfig)
+	if dat, err := ioutil.ReadFile(path); err != nil {
+		log.Error(err)
+	} else {
+		if err = json.Unmarshal(dat, &config); err != nil {
+			log.Error(err)
+		}
+	}
+	return config, err
 }
 
 func config2route(c *Config) *tp.Route {
@@ -219,7 +247,7 @@ func autoUpdateConfig(url, server string) {
 			log.Println("Config Hash:", hashNew)
 			if hashNew != hash {
 				r = config2route(&config)
-				r.OptimizeBackend()
+				//r.OptimizeBackend()
 				P.SetRoute(r)
 				hash = hashNew
 				lastUpdate = time.Now()

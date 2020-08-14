@@ -75,7 +75,7 @@ func handleMux(conn io.ReadWriteCloser, config *Config, laddr, raddr net.Addr, f
 }
 
 func init() {
-	go sigHandler()
+	//go sigHandler()
 	rand.Seed(int64(time.Now().Nanosecond()))
 	/*if VERSION == "SELFBUILD" {
 		// add more log flags for debugging

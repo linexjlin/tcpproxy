@@ -24,11 +24,12 @@ func SendTraf(user, userIP, url, server string, in, out uint64) {
 		q.Add("in", fmt.Sprint(in))
 		q.Add("out", fmt.Sprint(out))
 		req.URL.RawQuery = q.Encode()
-		client := http.Client{}
+		client := http.Client{Timeout: time.Second * 15}
 		rsp, err := client.Do(req)
-		defer rsp.Body.Close()
 		if err != nil {
 			log.Warning(err)
+		} else {
+			rsp.Body.Close()
 		}
 	}
 }
