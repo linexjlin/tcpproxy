@@ -1,3 +1,5 @@
 proxy
 *.conf
 tcpp
+HEAD
+bindata.go
