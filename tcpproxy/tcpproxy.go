@@ -4,6 +4,7 @@ import (
 	"io"
 	"net"
 	"strings"
+	"sync"
 	"time"
 
 	//	humanize "github.com/dustin/go-humanize"
@@ -235,26 +236,34 @@ func (p *Proxy) getRemotes(rType, host, ip string, laddr, raddr net.Addr) (int, 
 	return UNKNOWN, []string{}
 }
 
+var lPool = sync.Pool{
+	New: func() interface{} {
+		return make([]byte, 32*1024)
+	},
+}
+
 //io.CopyBuffer
-func trans3(p1, p2 io.ReadWriteCloser) (int64, int64) {
+func trans(p1, p2 io.ReadWriteCloser) (int64, int64) {
 	var sync = make(chan int, 2)
 	var toP1Bytes, toP2Bytes int64
 	var err error
 	go func() {
-		buf := make([]byte, 65535)
+		buf := lPool.Get().([]byte)
 		toP1Bytes, err = io.CopyBuffer(p1, p2, buf)
 		if err != nil {
 			log.Debug(err)
 		}
+		lPool.Put(buf)
 		sync <- 1
 	}()
 
 	go func() {
-		buf := make([]byte, 65535)
+		buf := lPool.Get().([]byte)
 		toP2Bytes, err = io.CopyBuffer(p2, p1, buf)
 		if err != nil {
 			log.Debug(err)
 		}
+		lPool.Put(buf)
 		sync <- 1
 	}()
 
@@ -264,37 +273,6 @@ func trans3(p1, p2 io.ReadWriteCloser) (int64, int64) {
 	case <-time.After(time.Second * 10):
 	}
 	time.Sleep(time.Second * 1)
-	p1.Close()
-	p2.Close()
-	return toP1Bytes, toP2Bytes
-}
-
-//io.Copy version
-func trans(p1, p2 io.ReadWriteCloser) (int64, int64) {
-	var sync = make(chan int64, 2)
-	var toP1Bytes, toP2Bytes int64
-	var err error
-	go func() {
-		toP1Bytes, err = io.Copy(p1, p2)
-		if err != nil {
-			log.Debug(err)
-		}
-		sync <- 1
-	}()
-
-	go func() {
-		toP2Bytes, err = io.Copy(p2, p1)
-		if err != nil {
-			log.Debug(err)
-		}
-		sync <- 1
-	}()
-
-	<-sync
-	select {
-	case <-sync:
-	case <-time.After(time.Second * 10):
-	}
 	p1.Close()
 	p2.Close()
 	return toP1Bytes, toP2Bytes
@@ -346,7 +324,7 @@ func (p *Proxy) forwarder(inConn io.ReadWriteCloser, laddr, raddr net.Addr) {
 					}
 					log.Println(raddr, "->", bConn.RemoteAddr())
 					nn, _ := bConn.Write(buf)
-					out, in := trans3(inConn, bConn)
+					out, in := trans(inConn, bConn)
 					in += int64(nn)
 					var user string
 					switch rt {
