@@ -9,7 +9,7 @@ BINDCMD="go-bindata"
 UPX=upx
 BINARY_NAME=tcpp
 
-all: test build
+all: build
 build:
 	$(BINDCMD) $(VERSIONINFO)
 	$(GOBUILD) -o $(BINARY_NAME) -v
