@@ -9,7 +9,7 @@ import (
 	//	humanize "github.com/dustin/go-humanize"
 	"github.com/linexjlin/peektype"
 	"github.com/linexjlin/simple-log"
-	"github.com/linexjlin/tcpproxy/kcpp"
+	//"github.com/linexjlin/tcpproxy/kcpp"
 	limit "github.com/linexjlin/tcpproxy/limitip"
 	"github.com/linexjlin/tcpproxy/sendTraf"
 	tl "github.com/linexjlin/tcpproxy/tcplatency"
@@ -391,7 +391,7 @@ func (p *Proxy) Start() {
 var LIM = limit.NewLIMIT()
 
 func (p *Proxy) listenAndProxy(listenAddr string) {
-	go kcpp.ListenKCP(listenAddr, p.forwarder)
+	//go kcpp.ListenKCP(listenAddr, p.forwarder)
 	listener, err := net.Listen("tcp", listenAddr)
 	if err != nil {
 		log.Error("Failed to setup listener:", err)
