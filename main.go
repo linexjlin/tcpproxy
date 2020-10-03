@@ -55,7 +55,7 @@ func main() {
 
 		//log.Println("get route", r)
 		P.SetRoute(r)
-		P.Start()
+		//P.Start()
 		if (*url) != "" {
 			autoUpdateConfig(*url, *name)
 		}

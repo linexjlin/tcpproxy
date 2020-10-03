@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	humanize "github.com/dustin/go-humanize"
+	//	humanize "github.com/dustin/go-humanize"
 	"github.com/linexjlin/peektype"
 	"github.com/linexjlin/simple-log"
 	"github.com/linexjlin/tcpproxy/kcpp"
@@ -359,13 +359,18 @@ func (p *Proxy) forwarder(inConn io.ReadWriteCloser, laddr, raddr net.Addr) {
 					default:
 						user = hostname
 					}
-					if tf, ok := p.ut[user]; !ok {
-						p.ut[user] = &Taf{}
-						p.ut[user].ip = ip
-					} else {
-						tf.in += uint64(in)
-						tf.out += uint64(out)
-					}
+
+					sendTraf.Tfs.AddTraf(user, ip, p.name, uint64(in), uint64(out))
+
+					/*
+						if tf, ok := p.ut[user]; !ok {
+							p.ut[user] = &Taf{}
+							p.ut[user].ip = ip
+						} else {
+							tf.in += uint64(in)
+							tf.out += uint64(out)
+						}*/
+
 					log.Infof("%s [%s->%s->%s] [I:%d O:%d]\n", user, raddr.String(), laddr.String(), remote, in, out)
 					return
 				}
@@ -376,11 +381,12 @@ func (p *Proxy) forwarder(inConn io.ReadWriteCloser, laddr, raddr net.Addr) {
 	}
 }
 
+/*
 func (p *Proxy) Start() {
 	if p.sendTraf {
 		go p.autoSentTraf(time.Minute * 2)
 	}
-}
+}*/
 
 var LIM = limit.NewLIMIT()
 
@@ -405,6 +411,7 @@ func (p *Proxy) listenAndProxy(listenAddr string) {
 	}
 }
 
+/*
 func (p *Proxy) autoSentTraf(interval time.Duration) {
 	var from = time.Now()
 	for {
@@ -429,4 +436,4 @@ func (p *Proxy) autoSentTraf(interval time.Duration) {
 		}
 		from = time.Now()
 	}
-}
+} */
