@@ -29,6 +29,10 @@ func (t *Traf) ResetTraf() {
 	t.in, t.out = 0, 0
 }
 
+func (t *Traf) SetIP(ip string) {
+	t.ip = ip
+}
+
 func (t *Traf) SendTraf() {
 	if t.url == "" {
 		return
@@ -88,6 +92,7 @@ func (ts *Trafs) AddTraf(host, userIP, server string, in, out uint64) {
 	}
 	ts.server = server
 	tf := ts.GetTraf(host)
+	tf.SetIP(userIP)
 	tf.AddTraf(in, out)
 }
 
