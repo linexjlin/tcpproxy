@@ -306,7 +306,7 @@ func (p *Proxy) forwarder(inConn io.ReadWriteCloser, laddr, raddr net.Addr) {
 			log.Infof("SSH: %s\n", raddr.String())
 		case peektype.HTTP:
 			rt, remotes = p.getRemotes("HTTP", peek.Hostname, ip, laddr, raddr)
-			log.Infof("http://%s %s\n", hostname, raddr.String())
+			log.Debugf("http://%s %s\n", hostname, raddr.String())
 		case peektype.HTTPS:
 			rt, remotes = p.getRemotes("HTTPS", peek.Hostname, ip, laddr, raddr)
 			log.Infof("https://%s %s\n", hostname, raddr.String())
