@@ -11,6 +11,7 @@ import (
 	"github.com/linexjlin/peektype"
 	"github.com/linexjlin/simple-log"
 	//"github.com/linexjlin/tcpproxy/kcpp"
+	"github.com/eternnoir/gncp"
 	limit "github.com/linexjlin/tcpproxy/limitip"
 	"github.com/linexjlin/tcpproxy/sendTraf"
 	tl "github.com/linexjlin/tcpproxy/tcplatency"
@@ -101,6 +102,7 @@ type Proxy struct {
 	listeners                  map[string]net.Listener
 	addByteUrl                 string
 	name                       string
+	connMap                    sync.Map
 }
 
 func NewProxy(sendTraf, sendByes, sendIP bool, url, name string) *Proxy {
@@ -279,6 +281,9 @@ func trans(p1, p2 io.ReadWriteCloser) (int64, int64) {
 }
 
 func (p *Proxy) forwarder(inConn io.ReadWriteCloser, laddr, raddr net.Addr) {
+	defer func() {
+		recover()
+	}()
 	ip := strings.Split(raddr.String(), ":")[0]
 	var buf = make([]byte, 512)
 	if n, e := inConn.Read(buf); e != nil {
@@ -313,8 +318,23 @@ func (p *Proxy) forwarder(inConn io.ReadWriteCloser, laddr, raddr net.Addr) {
 		} else { //get remotes
 			var bConn net.Conn
 			var err error
+			var pool *gncp.GncpPool
 			for i, remote := range remotes {
-				if bConn, err = net.DialTimeout("tcp", remote, time.Millisecond*400); err != nil {
+				if v, ok := p.connMap.Load(remote); ok {
+					log.Debug("Hit cache for", remote)
+					pool = v.(*gncp.GncpPool)
+				} else {
+					log.Debug("create new pool for", remote)
+					pool, err = gncp.NewPool(3, 10, func() (net.Conn, error) {
+						return net.Dial("tcp", remote)
+					})
+					p.connMap.Store(remote, pool)
+					if err != nil {
+						log.Error(err)
+						continue
+					}
+				}
+				if bConn, err = pool.GetWithTimeout(time.Millisecond * 100); err != nil {
 					log.Println(remote, err)
 					continue
 				} else {
