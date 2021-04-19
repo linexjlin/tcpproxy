@@ -21,10 +21,12 @@ func main() {
 	version := flag.Bool("version", false, "")
 	fileLog := flag.String("log", "", "-log ./tcpp.log")
 	wsLog := flag.String("wslog", "", "-wslog :8044")
+	socks5 := flag.String("socks5", "", "-socks5 127.0.0.1:1080")
 	autoUpdate := flag.String("update", "", "http://up.xxx.com/tcpp")
 	debug := flag.Bool("debug", false, "debug")
 	flag.Parse()
 	time.Sleep(time.Second * 1)
+	tp.Socks5 = *socks5
 
 	if *version == true {
 		data, _ := Asset(".git/logs/HEAD")

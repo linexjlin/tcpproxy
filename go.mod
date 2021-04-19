@@ -4,6 +4,7 @@ go 1.14
 
 require (
 	github.com/dustin/go-humanize v1.0.0
+	github.com/eternnoir/gncp v0.0.0-20170707042257-c70df2d0cd68
 	github.com/golang/snappy v0.0.1
 	github.com/inconshreveable/go-update v0.0.0-20160112193335-8152e7eb6ccf
 	github.com/klauspost/reedsolomon v1.9.9 // indirect
@@ -16,4 +17,5 @@ require (
 	github.com/xtaci/kcp-go v5.4.20+incompatible
 	github.com/xtaci/smux v1.5.14
 	golang.org/x/crypto v0.0.0-20200709230013-948cd5f35899
+	golang.org/x/net v0.0.0-20190404232315-eb5bcb51f2a3
 )

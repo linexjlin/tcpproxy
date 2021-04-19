@@ -15,6 +15,7 @@ import (
 	limit "github.com/linexjlin/tcpproxy/limitip"
 	"github.com/linexjlin/tcpproxy/sendTraf"
 	tl "github.com/linexjlin/tcpproxy/tcplatency"
+	"golang.org/x/net/proxy"
 )
 
 const (
@@ -280,6 +281,8 @@ func trans(p1, p2 io.ReadWriteCloser) (int64, int64) {
 	return toP1Bytes, toP2Bytes
 }
 
+var Socks5 string
+
 func (p *Proxy) forwarder(inConn io.ReadWriteCloser, laddr, raddr net.Addr) {
 	defer func() {
 		recover()
@@ -326,7 +329,15 @@ func (p *Proxy) forwarder(inConn io.ReadWriteCloser, laddr, raddr net.Addr) {
 				} else {
 					log.Debug("create new pool for", remote)
 					pool, err = gncp.NewPool(3, 10, func() (net.Conn, error) {
-						return net.Dial("tcp", remote)
+						if Socks5 != "" {
+							dial, err := proxy.SOCKS5("tcp", Socks5, nil, proxy.Direct)
+							if err != nil {
+								log.Error(err)
+							}
+							return dial.Dial("tcp", remote)
+						} else {
+							return net.Dial("tcp", remote)
+						}
 					})
 					p.connMap.Store(remote, pool)
 					if err != nil {
@@ -346,6 +357,7 @@ func (p *Proxy) forwarder(inConn io.ReadWriteCloser, laddr, raddr net.Addr) {
 					nn, _ := bConn.Write(buf)
 					out, in := trans(inConn, bConn)
 					in += int64(nn)
+					defer pool.Remove(bConn)
 					var user string
 					switch rt {
 					case IPPORT:
