@@ -328,7 +328,7 @@ func (p *Proxy) forwarder(inConn io.ReadWriteCloser, laddr, raddr net.Addr) {
 					pool = v.(*gncp.GncpPool)
 				} else {
 					log.Debug("create new pool for", remote)
-					pool, err = gncp.NewPool(3, 10, func() (net.Conn, error) {
+					pool, err = gncp.NewPool(20, 40, func() (net.Conn, error) {
 						if Socks5 != "" {
 							dial, err := proxy.SOCKS5("tcp", Socks5, nil, proxy.Direct)
 							if err != nil {
@@ -415,7 +415,7 @@ func (p *Proxy) listenAndProxy(listenAddr string) {
 		if conn, err := listener.Accept(); err != nil {
 			log.Println(err)
 		} else {
-			conn.SetDeadline(time.Now().Add(time.Hour))
+			conn.SetDeadline(time.Now().Add(time.Second * 360))
 			go p.forwarder(conn, conn.LocalAddr(), conn.RemoteAddr())
 		}
 	}
