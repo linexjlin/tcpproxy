@@ -11,7 +11,7 @@ import (
 	"github.com/linexjlin/peektype"
 	"github.com/linexjlin/simple-log"
 	//"github.com/linexjlin/tcpproxy/kcpp"
-	"github.com/eternnoir/gncp"
+	"github.com/linexjlin/gncp"
 	limit "github.com/linexjlin/tcpproxy/limitip"
 	"github.com/linexjlin/tcpproxy/sendTraf"
 	tl "github.com/linexjlin/tcpproxy/tcplatency"
@@ -328,7 +328,7 @@ func (p *Proxy) forwarder(inConn io.ReadWriteCloser, laddr, raddr net.Addr) {
 					pool = v.(*gncp.GncpPool)
 				} else {
 					log.Debug("create new pool for", remote)
-					pool, err = gncp.NewPool(20, 40, func() (net.Conn, error) {
+					pool, err = gncp.NewPool(5, 8, func() (net.Conn, error) {
 						if Socks5 != "" {
 							dial, err := proxy.SOCKS5("tcp", Socks5, nil, proxy.Direct)
 							if err != nil {
