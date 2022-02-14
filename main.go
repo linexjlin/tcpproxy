@@ -20,7 +20,6 @@ func main() {
 	name := flag.String("n", "", "server name")
 	version := flag.Bool("version", false, "")
 	fileLog := flag.String("log", "", "-log ./tcpp.log")
-	wsLog := flag.String("wslog", "", "-wslog :8044")
 	socks5 := flag.String("socks5", "", "-socks5 127.0.0.1:1080")
 	autoUpdate := flag.String("update", "", "http://up.xxx.com/tcpp")
 	debug := flag.Bool("debug", false, "debug")
@@ -40,10 +39,6 @@ func main() {
 
 	if *fileLog != "" {
 		log.LogToFile(*fileLog)
-	}
-	if *wsLog != "" {
-		log.LogToWs(*wsLog, "/")
-
 	}
 	if *autoUpdate != "" {
 		go updater(*autoUpdate)
