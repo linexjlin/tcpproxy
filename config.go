@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -60,6 +61,7 @@ func getConfig(url, server, hash string) (Config, error) {
 	var config Config
 	var err error
 	http.DefaultClient.Timeout = time.Minute * 3
+	http.DefaultTransport.(*http.Transport).TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
 
 	if req, err := http.NewRequest("GET", url, nil); err != nil {
 		log.Println(err)
@@ -72,7 +74,7 @@ func getConfig(url, server, hash string) (Config, error) {
 		client := http.Client{}
 		if rsp, err := client.Do(req); err != nil {
 			log.Println(err)
-			return config, err
+			return LoadConfigFromFile("/tmp/.config.json")
 		} else {
 			if rsp.StatusCode == 200 {
 				if dat, err := ioutil.ReadAll(rsp.Body); err != nil {
@@ -92,7 +94,7 @@ func getConfig(url, server, hash string) (Config, error) {
 			} else {
 				log.Error(rsp.StatusCode)
 				log.Error(req.URL.Host, req.URL.RequestURI())
-				return config, errors.New("No Found!")
+				return LoadConfigFromFile("/tmp/.config.json")
 			}
 			rsp.Body.Close()
 		}
