@@ -12,11 +12,11 @@ BINARY_NAME=tcpp
 all: build
 build:
 	$(BINDCMD) $(VERSIONINFO)
-	$(GOBUILD) -o $(BINARY_NAME) -v
+	CGO_ENABLED=0 $(GOBUILD)  -o $(BINARY_NAME) -v
 
 release:
 	$(BINDCMD) $(VERSIONINFO)
-	$(GOBUILD) -ldflags="-s -w" -o $(BINARY_NAME) -v
+	CGO_ENABLED=0 $(GOBUILD)  -ldflags="-s -w" -o $(BINARY_NAME) -v
 	$(UPX) $(BINARY_NAME)
 clean:
 	$(GOCLEAN)
